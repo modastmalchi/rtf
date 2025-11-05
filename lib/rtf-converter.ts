@@ -131,6 +131,7 @@ export function rtfToHtml(rtf: string): string {
 
   let out = '';
   let curText = '';
+  let pendingParagraphTag = '';
 
   function appendText(txt: string): void {
     curText += escapeHtml(txt);
@@ -138,6 +139,10 @@ export function rtfToHtml(rtf: string): string {
 
   function flushText(): void {
     if (!curText) return;
+    if (pendingParagraphTag) {
+      out += pendingParagraphTag;
+      pendingParagraphTag = '';
+    }
     const st = stateStack[stateStack.length - 1];
     const style = stateToStyle(st);
     const openTags = openInlineTags(st);
@@ -324,25 +329,45 @@ export function rtfToHtml(rtf: string): string {
           break;
         case 'qr':
           cur.align = 'right';
+          if (pendingParagraphTag) {
+            pendingParagraphTag = '<p style="text-align:right">';
+          }
           break;
         case 'qc':
           cur.align = 'center';
+          if (pendingParagraphTag) {
+            pendingParagraphTag = '<p style="text-align:center">';
+          }
           break;
         case 'ql':
           cur.align = 'left';
+          if (pendingParagraphTag) {
+            pendingParagraphTag = '<p style="text-align:left">';
+          }
           break;
         case 'qj':
           cur.align = 'justify';
+          if (pendingParagraphTag) {
+            pendingParagraphTag = '<p style="text-align:justify">';
+          }
           break;
         case 'pard':
           flushText();
-          const pardAlign = stateStack[stateStack.length - 1].align;
-          const pardStyle = pardAlign ? ` style="text-align:${pardAlign}"` : '';
-          out += `<p${pardStyle}>`;
+          if (pendingParagraphTag) {
+            out += pendingParagraphTag;
+          }
+          // Reset paragraph formatting (pard resets to defaults)
+          cur.align = null;
+          // Don't create the tag yet - wait for alignment commands like \qc, \qr
+          pendingParagraphTag = '<p>'; // Will be updated if alignment is specified
           break;
         case 'par':
           flushText();
-          const parAlign = stateStack[stateStack.length - 1].align;
+          if (pendingParagraphTag) {
+            out += pendingParagraphTag;
+            pendingParagraphTag = '';
+          }
+          const parAlign = cur.align;
           const parStyle = parAlign ? ` style="text-align:${parAlign}"` : '';
           out += `</p><p${parStyle}>`;
           break;
