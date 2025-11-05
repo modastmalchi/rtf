@@ -132,6 +132,7 @@ export function rtfToHtml(rtf: string): string {
   let out = '';
   let curText = '';
   let pendingParagraphTag = '';
+  let paragraphHasContent = false;
 
   function appendText(txt: string): void {
     curText += escapeHtml(txt);
@@ -142,6 +143,7 @@ export function rtfToHtml(rtf: string): string {
     if (pendingParagraphTag) {
       out += pendingParagraphTag;
       pendingParagraphTag = '';
+      paragraphHasContent = true;
     }
     const st = stateStack[stateStack.length - 1];
     const style = stateToStyle(st);
@@ -358,18 +360,25 @@ export function rtfToHtml(rtf: string): string {
           }
           // Reset paragraph formatting (pard resets to defaults)
           cur.align = null;
+          paragraphHasContent = false;
           // Don't create the tag yet - wait for alignment commands like \qc, \qr
           pendingParagraphTag = '<p>'; // Will be updated if alignment is specified
           break;
         case 'par':
           flushText();
-          if (pendingParagraphTag) {
-            out += pendingParagraphTag;
-            pendingParagraphTag = '';
+          // If paragraph is empty, just add <br> instead of new paragraph
+          if (!paragraphHasContent && !pendingParagraphTag) {
+            out += '<br/>';
+          } else {
+            if (pendingParagraphTag) {
+              out += pendingParagraphTag;
+              pendingParagraphTag = '';
+            }
+            const parAlign = cur.align;
+            const parStyle = parAlign ? ` style="text-align:${parAlign}"` : '';
+            out += `</p><p${parStyle}>`;
+            paragraphHasContent = false;
           }
-          const parAlign = cur.align;
-          const parStyle = parAlign ? ` style="text-align:${parAlign}"` : '';
-          out += `</p><p${parStyle}>`;
           break;
         case 'line':
           flushText();
