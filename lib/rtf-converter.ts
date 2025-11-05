@@ -379,6 +379,10 @@ export function rtfToHtml(rtf: string): string {
             out += `</p><p${parStyle}>`;
             paragraphHasContent = false;
           }
+          // Reset character formatting at paragraph boundaries (non-standard but practical)
+          cur.bold = false;
+          cur.italic = false;
+          cur.underline = false;
           break;
         case 'line':
           flushText();
