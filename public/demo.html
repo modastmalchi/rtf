@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>مبدل RTF و HTML</title>
+  <style>
+    body {
+      font-family: Arial, 'B Nazanin', Tahoma;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .panel {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    h2 {
+      color: #555;
+      border-bottom: 2px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    textarea {
+      width: 100%;
+      min-height: 300px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      resize: vertical;
+    }
+    .preview {
+      min-height: 300px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: #fafafa;
+      overflow-x: auto;
+    }
+    .buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    button {
+      padding: 10px 20px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.3s;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    button.secondary {
+      background: #2196F3;
+    }
+    button.secondary:hover {
+      background: #0b7dda;
+    }
+    .label {
+      font-weight: bold;
+      margin-top: 15px;
+      margin-bottom: 5px;
+      color: #666;
+    }
+    .info {
+      background: #e3f2fd;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      font-size: 14px;
+    }
+    .full-width {
+      grid-column: 1 / -1;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔄 مبدل RTF، HTML و Hex</h1>
+  
+  <div class="info">
+    این ابزار چهار تبدیل را پشتیبانی می‌کند: RTF به HTML، HTML به RTF، RTF به Hex، و Hex به RTF
+  </div>
+
+  <div class="container">
+    <!-- RTF to HTML Panel -->
+    <div class="panel">
+      <h2>RTF → HTML</h2>
+      <textarea id="rtfInput" placeholder="کد RTF خود را اینجا وارد کنید...">{\rtf1\ansi\ansicpg1256\deff0{\fonttbl{\f0\fnil\fcharset178 Arial;}}
+{\colortbl ;\red255\green0\blue0;\red0\green0\blue255;}
+\pard\qr\b\f0\fs24\cf1 سلام دنیا\b0\par
+\pard\qc\i این یک تست است\i0\par
+\pard\ql\ul\cf2 متن آبی\ul0\cf0\par
+}</textarea>
+      <div class="buttons">
+        <button onclick="convertRtfToHtml()">تبدیل به HTML</button>
+        <button class="secondary" onclick="loadRtfFile()">بارگذاری فایل RTF</button>
+      </div>
+      <div class="label">پیش‌نمایش HTML:</div>
+      <div id="htmlPreview" class="preview"></div>
+      <div class="label">کد HTML:</div>
+      <textarea id="htmlOutput" readonly></textarea>
+    </div>
+
+    <!-- HTML to RTF Panel -->
+    <div class="panel">
+      <h2>HTML → RTF</h2>
+      <textarea id="htmlInput" placeholder="کد HTML خود را اینجا وارد کنید..."><p style="text-align:right"><strong>سلام دنیا</strong></p>
+<p style="text-align:center"><em>این یک تست است</em></p>
+<p><u>متن با زیرخط</u></p></textarea>
+      <div class="buttons">
+        <button onclick="convertHtmlToRtf()">تبدیل به RTF</button>
+        <button class="secondary" onclick="downloadRtf()">دانلود فایل RTF</button>
+      </div>
+      <div class="label">کد RTF:</div>
+      <textarea id="rtfOutput" readonly></textarea>
+    </div>
+
+    <!-- RTF to Hex Panel -->
+    <div class="panel">
+      <h2>RTF → Hex</h2>
+      <textarea id="rtfHexInput" placeholder="کد RTF برای تبدیل به Hex...">{\rtf1\ansi Test}</textarea>
+      <div class="buttons">
+        <button onclick="convertRtfToHex()">تبدیل به Hex</button>
+      </div>
+      <div class="label">خروجی Hex:</div>
+      <textarea id="hexOutput" readonly></textarea>
+    </div>
+
+    <!-- Hex to RTF Panel -->
+    <div class="panel">
+      <h2>Hex → RTF</h2>
+      <textarea id="hexInput" placeholder="کد Hex برای تبدیل به RTF...">7b5c727466315c616e73692054657374207d</textarea>
+      <div class="buttons">
+        <button onclick="convertHexToRtf()">تبدیل به RTF</button>
+      </div>
+      <div class="label">خروجی RTF:</div>
+      <textarea id="rtfHexOutput" readonly></textarea>
+    </div>
+  </div>
+
+  <input type="file" id="fileInput" style="display:none" accept=".rtf">
+
+  <script src="./rtf-renderer.js"></script>
+  <script>
+    function convertRtfToHtml() {
+      const rtf = document.getElementById('rtfInput').value;
+      try {
+        const html = window.rtfToHtml(rtf);
+        document.getElementById('htmlOutput').value = html;
+        document.getElementById('htmlPreview').innerHTML = html;
+      } catch (e) {
+        alert('خطا در تبدیل: ' + e.message);
+      }
+    }
+
+    function convertHtmlToRtf() {
+      const html = document.getElementById('htmlInput').value;
+      try {
+        const rtf = window.htmlToRtf(html);
+        document.getElementById('rtfOutput').value = rtf;
+      } catch (e) {
+        alert('خطا در تبدیل: ' + e.message);
+      }
+    }
+
+    function convertRtfToHex() {
+      const rtf = document.getElementById('rtfHexInput').value;
+      try {
+        const hex = window.rtfToHex(rtf);
+        document.getElementById('hexOutput').value = hex;
+      } catch (e) {
+        alert('خطا در تبدیل: ' + e.message);
+      }
+    }
+
+    function convertHexToRtf() {
+      const hex = document.getElementById('hexInput').value;
+      try {
+        const rtf = window.hexToRtf(hex);
+        document.getElementById('rtfHexOutput').value = rtf;
+      } catch (e) {
+        alert('خطا در تبدیل: ' + e.message);
+      }
+    }
+
+    function loadRtfFile() {
+      document.getElementById('fileInput').click();
+    }
+
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+          document.getElementById('rtfInput').value = event.target.result;
+          convertRtfToHtml();
+        };
+        reader.readAsText(file);
+      }
+    });
+
+    function downloadRtf() {
+      const rtf = document.getElementById('rtfOutput').value;
+      if (!rtf) {
+        alert('ابتدا HTML را به RTF تبدیل کنید');
+        return;
+      }
+      
+      const blob = new Blob([rtf], { type: 'application/rtf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'output.rtf';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // Auto-convert on load
+    convertRtfToHtml();
+    convertHtmlToRtf();
+    convertRtfToHex();
+    convertHexToRtf();
+  </script>
+</body>
+</html>

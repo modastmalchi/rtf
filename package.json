@@ -1,0 +1,28 @@
+﻿{
+  "name": "rtf-html-converter",
+  "version": "1.0.0",
+  "description": "RTF to HTML converter with full Persian/Arabic support",
+  "main": "lib/rtf-converter.ts",
+  "types": "lib/rtf-converter.ts",
+  "scripts": {
+    "test": "tsx test-hex-conversion.ts",
+    "test:colors": "tsx test-colors-final.ts"
+  },
+  "keywords": [
+    "rtf",
+    "html",
+    "converter",
+    "persian",
+    "arabic",
+    "farsi",
+    "rtf-to-html",
+    "html-to-rtf",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.6.2",
+    "typescript": "^5.9.3"
+  }
+}

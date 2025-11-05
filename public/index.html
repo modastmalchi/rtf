@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="fa">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RTF Viewer — نمایش RTF مثل Word</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 20px; direction: rtl; }
+    #editor { width: 100%; height: 220px; font-family: monospace; }
+    #render { border: 1px solid #ccc; padding: 16px; min-height: 200px; background: #fff; }
+    .row { display:flex; gap:10px; margin-bottom:10px; }
+    button { padding:8px 12px; }
+  </style>
+</head>
+<body>
+  <h2>نمایشگر RTF (پیش‌نمایش شبیه ورد)</h2>
+  <div class="row">
+    <input id="file" type="file" accept=".rtf" />
+    <button id="openSample">باز کردن نمونه</button>
+    <button id="convert">تبدیل و نمایش</button>
+    <button id="clear">پاک کن</button>
+  </div>
+
+  <textarea id="editor" placeholder="RTF را اینجا بچسبانید یا فایل بارگذاری کنید..."></textarea>
+
+  <h3>خروجی HTML</h3>
+  <div id="render"></div>
+
+  <script src="./rtf-renderer.js"></script>
+  <script>
+    const file = document.getElementById('file');
+    const editor = document.getElementById('editor');
+    const render = document.getElementById('render');
+    document.getElementById('convert').addEventListener('click', () => {
+      const rtf = editor.value;
+      try {
+        const html = window.rtfToHtml(rtf);
+        render.innerHTML = html;
+      } catch (e) {
+        render.textContent = 'خطا در تبدیل RTF: ' + e.message;
+      }
+    });
+
+    document.getElementById('clear').addEventListener('click', () => {
+      editor.value = '';
+      render.innerHTML = '';
+    });
+
+    file.addEventListener('change', (ev) => {
+      const f = ev.target.files[0];
+      if (!f) return;
+      const r = new FileReader();
+      r.onload = () => { editor.value = r.result; };
+      r.readAsText(f);
+    });
+
+    document.getElementById('openSample').addEventListener('click', () => {
+      // a small sample RTF for quick testing (kept minimal and safely escaped)
+      editor.value = "{\\rtf1\\ansi This is \\b bold\\b0\\par Hello, \\i italic\\i0.}";
+    });
+  </script>
+</body>
+</html>
