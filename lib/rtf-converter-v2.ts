@@ -953,5 +953,304 @@ export function rtfToHtml(rtf: string, options?: RtfConverterOptions): string {
   return result.data || '';
 }
 
+// ============================================
+// Hex Conversion Utilities
+// ============================================
+
+/**
+ * Convert RTF to Hexadecimal string
+ * Useful for storing RTF in database as hex
+ * @param rtf - RTF document string
+ * @returns Hexadecimal string
+ * @example
+ * const rtf = '{\\rtf1\\ansi Test}';
+ * const hex = rtfToHex(rtf);
+ * console.log(hex); // "7b5c727466315c616e736920546573747d"
+ */
+export function rtfToHex(rtf: string): string {
+  const bytes = new TextEncoder().encode(rtf);
+  return Array.from(bytes)
+    .map(byte => {
+      const hex = byte.toString(16);
+      return hex.length === 1 ? '0' + hex : hex;
+    })
+    .join('');
+}
+
+/**
+ * Convert Hexadecimal string to RTF
+ * Used to retrieve RTF from database hex format
+ * @param hex - Hexadecimal string
+ * @returns RTF document string
+ * @example
+ * const hex = "7b5c727466315c616e736920546573747d";
+ * const rtf = hexToRtf(hex);
+ * console.log(rtf); // "{\rtf1\ansi Test}"
+ */
+export function hexToRtf(hex: string): string {
+  const bytes: number[] = [];
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes.push(parseInt(hex.substr(i, 2), 16));
+  }
+  return new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+}
+
+/**
+ * Convert Hex to HTML directly
+ * Convenience function that combines hexToRtf and rtfToHtml
+ * @param hex - Hexadecimal string from database
+ * @param options - Converter options
+ * @returns Conversion result with HTML or error
+ * @example
+ * const result = hexToHtml(hexFromDb);
+ * if (result.success) {
+ *   console.log(result.data); // HTML output
+ * }
+ */
+export function hexToHtml(hex: string, options?: RtfConverterOptions): ConversionResult<string> {
+  try {
+    const rtf = hexToRtf(hex);
+    const converter = new RtfConverter(options);
+    return converter.convert(rtf);
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Hex to HTML conversion failed',
+    };
+  }
+}
+
+// ============================================
+// HTML to RTF Conversion
+// ============================================
+
+/**
+ * Convert HTML to RTF
+ * @param html - HTML string
+ * @returns RTF document string
+ * @example
+ * const html = '<p><strong>Hello</strong></p>';
+ * const rtf = htmlToRtf(html);
+ */
+export function htmlToRtf(html: string): string {
+  const colorTable: string[] = ['\\red0\\green0\\blue0'];
+  const colorMap = new Map<string, number>();
+  colorMap.set('rgb(0,0,0)', 1);
+  colorMap.set('#000000', 1);
+  colorMap.set('black', 1);
+
+  function getColorIndex(color: string): number | null {
+    if (!color || color === 'inherit' || color === 'initial') return null;
+
+    let normalized = color.toLowerCase().trim();
+
+    if (normalized.startsWith('#')) {
+      const hex = normalized.substring(1);
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
+      normalized = `rgb(${r},${g},${b})`;
+    }
+
+    if (colorMap.has(normalized)) {
+      return colorMap.get(normalized)!;
+    }
+
+    const rgbMatch = normalized.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (rgbMatch) {
+      const [, r, g, b] = rgbMatch;
+      const rtfColor = `\\red${r}\\green${g}\\blue${b}`;
+      const index = colorTable.length + 1;
+      colorTable.push(rtfColor);
+      colorMap.set(normalized, index);
+      return index;
+    }
+
+    return null;
+  }
+
+  const fontTable: string[] = ['Arial'];
+  const fontMap = new Map<string, number>();
+  fontMap.set('arial', 0);
+
+  function getFontIndex(fontFamily: string): number | null {
+    if (!fontFamily || fontFamily === 'inherit' || fontFamily === 'initial') return null;
+
+    const fonts = fontFamily.split(',').map(f => f.trim().replace(/['"]/g, '').toLowerCase());
+    const firstFont = fonts[0];
+
+    if (fontMap.has(firstFont)) {
+      return fontMap.get(firstFont)!;
+    }
+
+    const index = fontTable.length;
+    fontTable.push(fontFamily.split(',')[0].trim().replace(/['"]/g, ''));
+    fontMap.set(firstFont, index);
+    return index;
+  }
+
+  let rtfBody = '';
+
+  interface HtmlState {
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    fontSize?: number;
+    fontIndex?: number;
+    colorIndex?: number;
+  }
+
+  function parseNode(node: any, state: HtmlState = {}): string {
+    const newState = { ...state };
+    let content = '';
+
+    // Text node
+    if (node.nodeType === 3) {
+      let text = node.textContent || '';
+      text = text
+        .replace(/\\/g, '\\\\')
+        .replace(/\{/g, '\\{')
+        .replace(/\}/g, '\\}');
+
+      let formatted = '';
+
+      if (newState.bold) formatted += '\\b ';
+      if (newState.italic) formatted += '\\i ';
+      if (newState.underline) formatted += '\\ul ';
+      if (newState.fontSize) formatted += `\\fs${newState.fontSize * 2} `;
+      if (newState.fontIndex !== undefined) formatted += `\\f${newState.fontIndex} `;
+      if (newState.colorIndex !== undefined) formatted += `\\cf${newState.colorIndex} `;
+
+      formatted += Array.from(text as string).map((char) => {
+        const code = char.charCodeAt(0);
+        if (code > 127) {
+          return `\\u${code}?`;
+        }
+        return char;
+      }).join('');
+
+      if (newState.bold) formatted += '\\b0 ';
+      if (newState.italic) formatted += '\\i0 ';
+      if (newState.underline) formatted += '\\ul0 ';
+
+      return formatted;
+    }
+
+    // Element node
+    if (node.nodeType === 1) {
+      const element = node;
+      const tagName = element.tagName.toLowerCase();
+
+      if (tagName === 'strong' || tagName === 'b') {
+        newState.bold = true;
+      } else if (tagName === 'em' || tagName === 'i') {
+        newState.italic = true;
+      } else if (tagName === 'u') {
+        newState.underline = true;
+      } else if (tagName === 'span') {
+        const style = element.getAttribute('style');
+        if (style) {
+          const styles = style.split(';').reduce((acc: any, s: string) => {
+            const [key, value] = s.split(':').map(x => x.trim());
+            if (key && value) acc[key] = value;
+            return acc;
+          }, {} as Record<string, string>);
+
+          if (styles.color) {
+            const colorIndex = getColorIndex(styles.color);
+            if (colorIndex) newState.colorIndex = colorIndex;
+          }
+
+          if (styles['font-family']) {
+            const fontIndex = getFontIndex(styles['font-family']);
+            if (fontIndex !== null) newState.fontIndex = fontIndex;
+          }
+
+          if (styles['font-size']) {
+            const size = parseInt(styles['font-size']);
+            if (!isNaN(size)) newState.fontSize = size;
+          }
+        }
+      } else if (tagName === 'p' || tagName === 'div') {
+        const style = element.getAttribute('style');
+        let align = '';
+        if (style) {
+          const alignMatch = style.match(/text-align:\s*(\w+)/);
+          if (alignMatch) {
+            const alignment = alignMatch[1];
+            if (alignment === 'right') align = '\\qr ';
+            else if (alignment === 'center') align = '\\qc ';
+            else if (alignment === 'justify') align = '\\qj ';
+            else if (alignment === 'left') align = '\\ql ';
+          }
+        }
+        content += '\\pard' + align;
+      } else if (tagName === 'br') {
+        return '\\line ';
+      }
+
+      for (const child of Array.from(node.childNodes)) {
+        content += parseNode(child, newState);
+      }
+
+      if (tagName === 'p' || tagName === 'div') {
+        content += '\\par\n';
+      }
+
+      return content;
+    }
+
+    return content;
+  }
+
+  // Browser environment with DOMParser
+  if (typeof DOMParser !== 'undefined') {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    if (doc.body) {
+      rtfBody = parseNode(doc.body);
+    }
+  } else {
+    // Fallback for Node.js (simple regex-based parsing)
+    rtfBody = html
+      .replace(/<br\s*\/?>/gi, '\\line ')
+      .replace(/<p[^>]*>/gi, '\\pard ')
+      .replace(/<\/p>/gi, '\\par\n')
+      .replace(/<div[^>]*>/gi, '\\pard ')
+      .replace(/<\/div>/gi, '\\par\n')
+      .replace(/<strong[^>]*>|<b[^>]*>/gi, '\\b ')
+      .replace(/<\/strong>|<\/b>/gi, '\\b0 ')
+      .replace(/<em[^>]*>|<i[^>]*>/gi, '\\i ')
+      .replace(/<\/em>|<\/i>/gi, '\\i0 ')
+      .replace(/<u[^>]*>/gi, '\\ul ')
+      .replace(/<\/u>/gi, '\\ul0 ')
+      .replace(/<[^>]+>/g, '');
+
+    rtfBody = Array.from(rtfBody as string).map((char) => {
+      const code = char.charCodeAt(0);
+      if (code > 127) {
+        return `\\u${code}?`;
+      }
+      return char;
+    }).join('');
+  }
+
+  let rtf = '{\\rtf1\\ansi\\ansicpg1256\\deff0\n';
+  rtf += '{\\fonttbl\n';
+  fontTable.forEach((font, index) => {
+    rtf += `{\\f${index}\\fnil\\fcharset178 ${font};}\n`;
+  });
+  rtf += '}\n';
+  rtf += '{\\colortbl ;';
+  colorTable.forEach(color => {
+    rtf += color + ';';
+  });
+  rtf += '}\n';
+  rtf += rtfBody;
+  rtf += '}';
+
+  return rtf;
+}
+
 // Export for backward compatibility
 export default rtfToHtml;
