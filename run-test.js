@@ -54,7 +54,7 @@ const sample = String.raw`{\rtf1\fbidis\ansi\ansicpg1256\deff0\deflang1065{\font
 \par
 \pard\rtlpar\qr\fs30 3333\fs22\par
 \par
-\pard\rtlpar\fs24 1111\fs22\par
+\pard\rtlpar\ql\fs24 1111\fs22\par
 \pard\rtlpar\qr\par
 \pard{\pntext\f16\'B7\tab}{\*\pn\pnlvlblt\pnf16\pnindent0{\pntxtb\'B7}}\rtlpar\fi-200\ri200\qr\lang1065\f2\rtlch\'ca\'d3\'ca 1\f14\ltrch\par
 \f2\rtlch{\pntext\f16\'B7\tab}\'ca\'d3\'ca 2\f14\ltrch\par
