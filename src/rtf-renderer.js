@@ -485,6 +485,18 @@ function rtfToHtml(rtf) {
   
   // Clean up any stray font/color table text at the beginning
   out = out.replace(/^<div>[^<]*?(?=<p>)/, '<div>');
+  
+  // Clean up empty tags iteratively until no more empty tags exist
+  let prevOut = '';
+  while (prevOut !== out) {
+    prevOut = out;
+    // Remove empty inline tags (strong, em, u)
+    out = out.replace(/<(strong|em|u)>\s*<\/\1>/g, '');
+    // Remove empty spans
+    out = out.replace(/<span[^>]*>\s*<\/span>/g, '');
+  }
+  // Finally, replace empty paragraphs with <br/>
+  out = out.replace(/<p[^>]*>\s*<\/p>/g, '<br/>');
 
   return out;
 }
