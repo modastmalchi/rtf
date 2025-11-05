@@ -369,6 +369,10 @@ export function rtfToHtml(rtf: string): string {
           // If paragraph is empty, just add <br> instead of new paragraph
           if (!paragraphHasContent && !pendingParagraphTag) {
             out += '<br/>';
+            // Reset character formatting for empty paragraphs
+            cur.bold = false;
+            cur.italic = false;
+            cur.underline = false;
           } else {
             if (pendingParagraphTag) {
               out += pendingParagraphTag;
@@ -379,10 +383,6 @@ export function rtfToHtml(rtf: string): string {
             out += `</p><p${parStyle}>`;
             paragraphHasContent = false;
           }
-          // Reset character formatting at paragraph boundaries (non-standard but practical)
-          cur.bold = false;
-          cur.italic = false;
-          cur.underline = false;
           break;
         case 'line':
           flushText();
