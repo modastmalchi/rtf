@@ -348,6 +348,8 @@ export class RtfConverter {
     let colorTableDepth = 0;
     let fontTableDepth = 0;
     let tempColorR = 0, tempColorG = 0, tempColorB = 0;
+    let currentFontNumber: number | null = null;
+    let fontNameBuffer = '';
 
     let currentCodePage = this.options.codePage;
     let ucSkip = 1;
@@ -441,8 +443,12 @@ export class RtfConverter {
           tempColorB = 0;
         }
         if (inFontTable) {
-          flushText();
-          curText = '';
+          // End of font definition - save font name
+          if (currentFontNumber !== null && fontNameBuffer.trim()) {
+            fontTable[currentFontNumber] = fontNameBuffer.trim();
+          }
+          currentFontNumber = null;
+          fontNameBuffer = '';
         }
         i++;
         continue;
@@ -551,9 +557,16 @@ export class RtfConverter {
           // Font
           case 'f':
             if (param !== null) {
-              const fontName = fontTable[param];
-              if (fontName) {
-                cur.font = fontName;
+              if (inFontTable) {
+                // Inside font table: this is defining a font number
+                currentFontNumber = param;
+                fontNameBuffer = '';
+              } else {
+                // Outside font table: selecting a font
+                const fontName = fontTable[param];
+                if (fontName) {
+                  cur.font = fontName;
+                }
               }
             }
             break;
@@ -892,15 +905,9 @@ export class RtfConverter {
         continue;
       }
       
-      if (inFontTable) {
-        const fontNumMatch = rtf.substr(i).match(/^([^;{}]+)/);
-        if (fontNumMatch) {
-          const fontName = fontNumMatch[1].trim();
-          if (fontName) {
-            const lastFont = Object.keys(fontTable).length;
-            fontTable[lastFont] = fontName;
-          }
-        }
+      if (inFontTable && currentFontNumber !== null) {
+        // Collect font name text
+        fontNameBuffer += ch;
       } else {
         if (skipFallback > 0) {
           skipFallback--;
