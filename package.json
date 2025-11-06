@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "rtf-html-converter",
   "version": "1.0.0",
   "description": "RTF to HTML converter with full Persian/Arabic support",
@@ -6,7 +6,9 @@
   "types": "lib/rtf-converter.ts",
   "scripts": {
     "test": "tsx test-hex-conversion.ts",
-    "test:colors": "tsx test-colors-final.ts"
+    "test:colors": "tsx test-colors-final.ts",
+    "server": "node server.js",
+    "dev": "nodemon server.js"
   },
   "keywords": [
     "rtf",
@@ -23,6 +25,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^24.6.2",
+    "nodemon": "^3.0.1",
     "typescript": "^5.9.3"
   }
 }
