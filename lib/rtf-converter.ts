@@ -1,7 +1,11 @@
 /**
- * RTF Converter Library
+ * RTF Converter Library v3.0
+ * Professional-grade RTF to HTML converter
  * Optimized for React TypeScript projects
  * Supports Persian/Arabic (Windows-1256) and Latin (Windows-1252)
+ * 
+ * @author Your Name
+ * @version 3.0.0
  */
 
 // ============================================
@@ -9,46 +13,20 @@
 // ============================================
 
 export interface RtfConverterOptions {
-  codePage?: string; // e.g., 'windows-1256', 'windows-1252'
+  /** Code page for character encoding (e.g., 'windows-1256', 'windows-1252') */
+  codePage?: string;
+  /** Enable strict validation of RTF syntax */
+  strictMode?: boolean;
+  /** Maximum document size in bytes (default: 10MB) */
+  maxSize?: number;
 }
 
 export interface ConversionResult<T = string> {
   success: boolean;
   data?: T;
   error?: string;
+  warnings?: string[];
 }
-
-// ============================================
-// Helper Functions
-// ============================================
-
-function hexToBytes(hex: string): Uint8Array {
-  const bytes: number[] = [];
-  for (let c = 0; c < hex.length; c += 2) {
-    bytes.push(parseInt(hex.substr(c, 2), 16));
-  }
-  return new Uint8Array(bytes);
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  const len = bytes.length;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-// ============================================
-// RTF to HTML Converter
-// ============================================
 
 interface RtfState {
   bold: boolean;
@@ -61,6 +39,124 @@ interface RtfState {
   align: string | null;
 }
 
+interface ListState {
+  active: boolean;
+  level: number;
+  items: string[];
+}
+
+// ============================================
+// Constants
+// ============================================
+
+const DEFAULT_OPTIONS: Required<RtfConverterOptions> = {
+  codePage: 'windows-1252',
+  strictMode: false,
+  maxSize: 10 * 1024 * 1024, // 10MB
+};
+
+const RTF_HEADER_REGEX = /^{\\rtf1/;
+
+// ============================================
+// Helper Functions
+// ============================================
+
+/**
+ * Convert hex string to byte array
+ * @param hex - Hex string (e.g., "48656c6c6f")
+ * @returns Byte array
+ */
+function hexToBytes(hex: string): Uint8Array {
+  const bytes: number[] = [];
+  for (let c = 0; c < hex.length; c += 2) {
+    bytes.push(parseInt(hex.substr(c, 2), 16));
+  }
+  return new Uint8Array(bytes);
+}
+
+/**
+ * Convert byte array to base64 string
+ * @param bytes - Byte array
+ * @returns Base64 encoded string
+ */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const len = bytes.length;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+/**
+ * Escape HTML special characters
+ * @param s - Input string
+ * @returns HTML-safe string
+ */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Validate RTF document structure
+ * @param rtf - RTF string
+ * @param options - Converter options
+ * @returns Validation result
+ */
+function validateRtf(rtf: string, options: Required<RtfConverterOptions>): ConversionResult<void> {
+  const warnings: string[] = [];
+
+  // Check size
+  if (rtf.length > options.maxSize) {
+    return {
+      success: false,
+      error: `Document size (${rtf.length} bytes) exceeds maximum (${options.maxSize} bytes)`,
+    };
+  }
+
+  // Check RTF header
+  if (!RTF_HEADER_REGEX.test(rtf)) {
+    if (options.strictMode) {
+      return {
+        success: false,
+        error: 'Invalid RTF document: Missing RTF header',
+      };
+    }
+    warnings.push('Warning: Document does not start with RTF header');
+  }
+
+  // Check balanced braces
+  let braceCount = 0;
+  for (const ch of rtf) {
+    if (ch === '{') braceCount++;
+    if (ch === '}') braceCount--;
+    if (braceCount < 0) {
+      return {
+        success: false,
+        error: 'Invalid RTF document: Unbalanced closing brace',
+      };
+    }
+  }
+  if (braceCount !== 0) {
+    if (options.strictMode) {
+      return {
+        success: false,
+        error: `Invalid RTF document: ${braceCount} unclosed braces`,
+      };
+    }
+    warnings.push(`Warning: ${braceCount} unclosed braces`);
+  }
+
+  return { success: true, warnings };
+}
+
+/**
+ * Create empty RTF state
+ * @returns Empty state object
+ */
 function emptyState(): RtfState {
   return {
     bold: false,
@@ -74,6 +170,11 @@ function emptyState(): RtfState {
   };
 }
 
+/**
+ * Convert RTF state to inline CSS style string
+ * @param s - RTF state
+ * @returns CSS style attribute content
+ */
 function stateToStyle(s: RtfState): string {
   const styles: string[] = [];
   if (s.font) styles.push(`font-family:${s.font}`);
@@ -82,6 +183,11 @@ function stateToStyle(s: RtfState): string {
   return styles.length ? ` style="${styles.join(';')}"` : '';
 }
 
+/**
+ * Generate opening HTML tags for inline formatting
+ * @param state - Current RTF state
+ * @returns Opening tags string
+ */
 function openInlineTags(state: RtfState): string {
   const tags: string[] = [];
   if (state.bold) tags.push('<strong>');
@@ -90,6 +196,11 @@ function openInlineTags(state: RtfState): string {
   return tags.join('');
 }
 
+/**
+ * Generate closing HTML tags for inline formatting
+ * @param state - Current RTF state
+ * @returns Closing tags string
+ */
 function closeInlineTags(state: RtfState): string {
   const tags: string[] = [];
   if (state.underline) tags.push('</u>');
@@ -98,412 +209,839 @@ function closeInlineTags(state: RtfState): string {
   return tags.join('');
 }
 
+/**
+ * Decode byte using specified encoding
+ * @param byte - Byte value (0-255)
+ * @param encoding - Encoding name
+ * @returns Decoded character
+ */
 function decodeByteWithEncoding(byte: number, encoding: string): string {
-  try {
-    const decoder = new TextDecoder(encoding, { fatal: false });
-    return decoder.decode(new Uint8Array([byte]));
-  } catch {
-    return String.fromCharCode(byte);
+  if (encoding === 'windows-1256') {
+    // Windows-1256 (Arabic/Persian) mapping
+    const win1256: Record<number, number> = {
+      0x80: 0x20AC, 0x81: 0x067E, 0x82: 0x201A, 0x83: 0x0192, 0x84: 0x201E,
+      0x85: 0x2026, 0x86: 0x2020, 0x87: 0x2021, 0x88: 0x02C6, 0x89: 0x2030,
+      0x8A: 0x0679, 0x8B: 0x2039, 0x8C: 0x0152, 0x8D: 0x0686, 0x8E: 0x0698,
+      0x8F: 0x0688, 0x90: 0x06AF, 0x91: 0x2018, 0x92: 0x2019, 0x93: 0x201C,
+      0x94: 0x201D, 0x95: 0x2022, 0x96: 0x2013, 0x97: 0x2014, 0x98: 0x06A9,
+      0x99: 0x2122, 0x9A: 0x0691, 0x9B: 0x203A, 0x9C: 0x0153, 0x9D: 0x200C,
+      0x9E: 0x200D, 0x9F: 0x06BA, 0xA0: 0x00A0, 0xA1: 0x060C, 0xA2: 0x00A2,
+      0xA3: 0x00A3, 0xA4: 0x00A4, 0xA5: 0x00A5, 0xA6: 0x00A6, 0xA7: 0x00A7,
+      0xA8: 0x00A8, 0xA9: 0x00A9, 0xAA: 0x06BE, 0xAB: 0x00AB, 0xAC: 0x00AC,
+      0xAD: 0x00AD, 0xAE: 0x00AE, 0xAF: 0x00AF, 0xB0: 0x00B0, 0xB1: 0x00B1,
+      0xB2: 0x00B2, 0xB3: 0x00B3, 0xB4: 0x00B4, 0xB5: 0x00B5, 0xB6: 0x00B6,
+      0xB7: 0x00B7, 0xB8: 0x00B8, 0xB9: 0x00B9, 0xBA: 0x061B, 0xBB: 0x00BB,
+      0xBC: 0x00BC, 0xBD: 0x00BD, 0xBE: 0x00BE, 0xBF: 0x061F, 0xC0: 0x06C1,
+      0xC1: 0x0621, 0xC2: 0x0622, 0xC3: 0x0623, 0xC4: 0x0624, 0xC5: 0x0625,
+      0xC6: 0x0626, 0xC7: 0x0627, 0xC8: 0x0628, 0xC9: 0x0629, 0xCA: 0x062A,
+      0xCB: 0x062B, 0xCC: 0x062C, 0xCD: 0x062D, 0xCE: 0x062E, 0xCF: 0x062F,
+      0xD0: 0x0630, 0xD1: 0x0631, 0xD2: 0x0632, 0xD3: 0x0633, 0xD4: 0x0634,
+      0xD5: 0x0635, 0xD6: 0x0636, 0xD7: 0x00D7, 0xD8: 0x0637, 0xD9: 0x0638,
+      0xDA: 0x0639, 0xDB: 0x063A, 0xDC: 0x0640, 0xDD: 0x0641, 0xDE: 0x0642,
+      0xDF: 0x0643, 0xE0: 0x00E0, 0xE1: 0x0644, 0xE2: 0x00E2, 0xE3: 0x0645,
+      0xE4: 0x0646, 0xE5: 0x0647, 0xE6: 0x0648, 0xE7: 0x00E7, 0xE8: 0x00E8,
+      0xE9: 0x00E9, 0xEA: 0x00EA, 0xEB: 0x00EB, 0xEC: 0x0649, 0xED: 0x064A,
+      0xEE: 0x00EE, 0xEF: 0x00EF, 0xF0: 0x064B, 0xF1: 0x064C, 0xF2: 0x064D,
+      0xF3: 0x064E, 0xF4: 0x00F4, 0xF5: 0x064F, 0xF6: 0x0650, 0xF7: 0x00F7,
+      0xF8: 0x0651, 0xF9: 0x00F9, 0xFA: 0x0652, 0xFB: 0x00FB, 0xFC: 0x00FC,
+      0xFD: 0x200E, 0xFE: 0x200F, 0xFF: 0x06D2,
+    };
+    const mapped = win1256[byte];
+    return mapped !== undefined ? String.fromCharCode(mapped) : String.fromCharCode(byte);
   }
+  // Default: treat as Latin-1
+  return String.fromCharCode(byte);
 }
 
 /**
- * Convert RTF to HTML
- * @param rtf RTF string
- * @returns HTML string
+ * Clean up empty HTML tags using optimized single-pass approach
+ * @param html - Input HTML string
+ * @returns Cleaned HTML string
  */
-export function rtfToHtml(rtf: string): string {
-  const len = rtf.length;
-  let i = 0;
+function cleanupEmptyTags(html: string): string {
+  // Single-pass cleanup with optimized regex
+  let cleaned = html;
+  let prevCleaned = '';
+  
+  // Iteratively remove empty inline tags until no more changes
+  let iterations = 0;
+  const maxIterations = 10; // Prevent infinite loops
+  
+  while (cleaned !== prevCleaned && iterations < maxIterations) {
+    prevCleaned = cleaned;
+    // Remove empty formatting tags
+    cleaned = cleaned.replace(/<(strong|em|u|span[^>]*)>\s*<\/\1>/g, '');
+    // Remove empty spans
+    cleaned = cleaned.replace(/<span[^>]*>\s*<\/span>/g, '');
+    iterations++;
+  }
+  
+  // Convert empty paragraphs to <br/>
+  cleaned = cleaned.replace(/<p[^>]*>\s*<\/p>/g, '<br/>');
+  
+  return cleaned;
+}
 
-  const stateStack: RtfState[] = [emptyState()];
-  const colorTable: (string | null)[] = [];
-  const fontTable: Record<number, string> = {};
-  let inFontTable = false;
-  let inColorTable = false;
-  let colorTableDepth = 0;
-  let fontTableDepth = 0;
-  let tempColorR = 0, tempColorG = 0, tempColorB = 0;
+// ============================================
+// Main Converter Class
+// ============================================
 
-  let currentCodePage = 'windows-1252';
-  let ucSkip = 1;
-  let skipFallback = 0;
+/**
+ * RTF to HTML Converter
+ * Professional-grade converter with error handling and validation
+ */
+export class RtfConverter {
+  private options: Required<RtfConverterOptions>;
 
-  let out = '';
-  let curText = '';
-  let pendingParagraphTag = '';
-  let paragraphHasContent = false;
-
-  function appendText(txt: string): void {
-    curText += escapeHtml(txt);
+  constructor(options: RtfConverterOptions = {}) {
+    this.options = { ...DEFAULT_OPTIONS, ...options };
   }
 
-  function flushText(): void {
-    if (!curText) return;
-    if (pendingParagraphTag) {
-      out += pendingParagraphTag;
-      pendingParagraphTag = '';
-      paragraphHasContent = true;
-    }
-    const st = stateStack[stateStack.length - 1];
-    const style = stateToStyle(st);
-    const openTags = openInlineTags(st);
-    const closeTags = closeInlineTags(st);
-    if (openTags || style) {
-      out += `<span${style}>${openTags}${curText}${closeTags}</span>`;
-    } else {
-      out += curText;
-    }
-    curText = '';
-  }
+  /**
+   * Convert RTF string to HTML with error handling
+   * @param rtf - RTF document string
+   * @returns Conversion result with HTML or error
+   */
+  public convert(rtf: string): ConversionResult<string> {
+    try {
+      // Validate input
+      const validation = validateRtf(rtf, this.options);
+      if (!validation.success) {
+        return {
+          success: false,
+          error: validation.error,
+          warnings: validation.warnings,
+        };
+      }
 
-  function pushState(): void {
-    const copy = { ...stateStack[stateStack.length - 1] };
-    stateStack.push(copy);
-  }
-
-  function popState(): void {
-    stateStack.pop();
-  }
-
-  while (i < len) {
-    const ch = rtf[i];
-    
-    if (ch === '{') {
-      flushText();
-      pushState();
-      i++;
-      continue;
-    }
-    
-    if (ch === '}') {
-      flushText();
-      // Check if we're closing the font/color table groups
-      const currentDepth = stateStack.length;
-      if (inFontTable && currentDepth <= fontTableDepth) {
-        inFontTable = false;
-      }
-      if (inColorTable && currentDepth <= colorTableDepth) {
-        inColorTable = false;
-      }
-      popState();
-      i++;
-      continue;
-    }
-    
-    if (ch === ';') {
-      if (inColorTable) {
-        const colorStr = `rgb(${tempColorR},${tempColorG},${tempColorB})`;
-        colorTable.push(colorStr);
-        // console.log(`DEBUG: Added color at index ${colorTable.length - 1}: ${colorStr}`);
-        tempColorR = 0; tempColorG = 0; tempColorB = 0;
-      }
-      if (inFontTable) {
-        flushText();
-        curText = '';
-      }
-      i++;
-      continue;
-    }
-    
-    if (ch === '\\') {
-      i++;
-      if (i >= len) break;
-      const next = rtf[i];
+      // Convert
+      const html = this.rtfToHtml(rtf);
       
-      if (next === '{' || next === '}' || next === '\\') {
-        if (skipFallback > 0) {
-          skipFallback--;
-        } else {
-          appendText(next);
+      return {
+        success: true,
+        data: html,
+        warnings: validation.warnings,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error during conversion',
+      };
+    }
+  }
+
+  /**
+   * Main RTF to HTML conversion logic
+   * @param rtf - RTF document string
+   * @returns HTML string
+   */
+  private rtfToHtml(rtf: string): string {
+    const len = rtf.length;
+    let i = 0;
+
+    const stateStack: RtfState[] = [emptyState()];
+    const colorTable: (string | null)[] = [];
+    const fontTable: Record<number, string> = {};
+    
+    let inFontTable = false;
+    let inColorTable = false;
+    let colorTableDepth = 0;
+    let fontTableDepth = 0;
+    let tempColorR = 0, tempColorG = 0, tempColorB = 0;
+    let currentFontNumber: number | null = null;
+    let fontNameBuffer = '';
+
+    let currentCodePage = this.options.codePage;
+    let ucSkip = 1;
+    let skipFallback = 0;
+
+    const outputBuffer: string[] = [];
+    let curText = '';
+    let pendingParagraphTag = '';
+    let paragraphHasContent = false;
+    
+    // List state tracking
+    let inList = false;
+    let listLevel = 0;
+    let listItems: string[] = [];
+
+    const appendText = (txt: string): void => {
+      curText += escapeHtml(txt);
+    };
+
+    const flushText = (): void => {
+      if (!curText) return;
+      
+      if (pendingParagraphTag) {
+        outputBuffer.push(pendingParagraphTag);
+        pendingParagraphTag = '';
+        paragraphHasContent = true;
+      }
+      
+      const st = stateStack[stateStack.length - 1];
+      const style = stateToStyle(st);
+      const openTags = openInlineTags(st);
+      const closeTags = closeInlineTags(st);
+      
+      if (openTags || style) {
+        outputBuffer.push(`<span${style}>${openTags}${curText}${closeTags}</span>`);
+      } else {
+        outputBuffer.push(curText);
+      }
+      
+      curText = '';
+    };
+
+    const pushState = (): void => {
+      const copy = { ...stateStack[stateStack.length - 1] };
+      stateStack.push(copy);
+    };
+
+    const popState = (): void => {
+      if (stateStack.length > 1) {
+        stateStack.pop();
+      }
+    };
+
+    const getCurrentState = (): RtfState => {
+      return stateStack[stateStack.length - 1];
+    };
+
+    // Main parsing loop
+    while (i < len) {
+      const ch = rtf[i];
+      
+      if (ch === '{') {
+        flushText();
+        pushState();
+        i++;
+        continue;
+      }
+      
+      if (ch === '}') {
+        flushText();
+        
+        const currentDepth = stateStack.length;
+        if (inFontTable && currentDepth <= fontTableDepth) {
+          inFontTable = false;
+        }
+        if (inColorTable && currentDepth <= colorTableDepth) {
+          inColorTable = false;
+        }
+        
+        popState();
+        i++;
+        continue;
+      }
+      
+      if (ch === ';') {
+        if (inColorTable) {
+          const colorStr = `rgb(${tempColorR},${tempColorG},${tempColorB})`;
+          colorTable.push(colorStr);
+          tempColorR = 0;
+          tempColorG = 0;
+          tempColorB = 0;
+        }
+        if (inFontTable) {
+          // End of font definition - save font name
+          if (currentFontNumber !== null && fontNameBuffer.trim()) {
+            fontTable[currentFontNumber] = fontNameBuffer.trim();
+          }
+          currentFontNumber = null;
+          fontNameBuffer = '';
         }
         i++;
         continue;
       }
       
-      if (next === "'") {
+      if (ch === '\\') {
         i++;
-        const hex = rtf.substr(i, 2);
-        if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
-          const byte = parseInt(hex, 16);
+        if (i >= len) break;
+        
+        const next = rtf[i];
+        
+        // Escaped characters
+        if (next === '{' || next === '}' || next === '\\') {
           if (skipFallback > 0) {
             skipFallback--;
           } else {
-            const chDecoded = decodeByteWithEncoding(byte, currentCodePage);
-            appendText(chDecoded);
+            appendText(next);
           }
-          i += 2;
+          i++;
           continue;
         }
-      }
-
-      let cw = '';
-      while (i < len) {
-        const c = rtf[i];
-        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
-          cw += c;
+        
+        // Hex escape
+        if (next === "'") {
           i++;
-        } else break;
-      }
-      
-      let param: number | null = null;
-      let negative = false;
-      if (i < len && (rtf[i] === '-' || (rtf[i] >= '0' && rtf[i] <= '9'))) {
-        if (rtf[i] === '-') { negative = true; i++; }
-        let num = '';
-        while (i < len && rtf[i] >= '0' && rtf[i] <= '9') { num += rtf[i++]; }
-        param = parseInt(num || '0', 10) * (negative ? -1 : 1);
-      }
-      
-      if (i < len && rtf[i] === ' ') { i++; }
-
-      const cur = stateStack[stateStack.length - 1];
-      
-      switch (cw) {
-        case 'ansi':
-          currentCodePage = 'windows-1252';
-          break;
-        case 'ansicpg':
-          if (param !== null && !isNaN(param)) {
-            currentCodePage = `windows-${param}`;
-          }
-          break;
-        case 'b':
-          cur.bold = (param === 0) ? false : true;
-          break;
-        case 'i':
-          cur.italic = (param === 0) ? false : true;
-          break;
-        case 'ul':
-          // \ul N  -> underline on (N != 0) or off (N == 0)
-          cur.underline = (param === 0) ? false : true;
-          break;
-        case 'ulnone':
-          // \ulnone explicitly turns underline off (often appears without a numeric parameter)
-          cur.underline = false;
-          break;
-        case 'fs':
-          if (param !== null) {
-            cur.fontSize = Math.round(param / 2);
-          }
-          break;
-        case 'f':
-          if (param !== null) {
-            if (inFontTable) {
-              let fontName = '';
-              let j = i;
-              let depth = 0;
-              while (j < len) {
-                const c = rtf[j];
-                if (c === '{') depth++;
-                else if (c === '}') {
-                  if (depth === 0) break;
-                  depth--;
-                }
-                else if (c === ';' && depth === 0) break;
-                else if (c === '\\') {
-                  j++;
-                  while (j < len && ((rtf[j] >= 'a' && rtf[j] <= 'z') || (rtf[j] >= 'A' && rtf[j] <= 'Z'))) j++;
-                  if (j < len && rtf[j] === '-') j++;
-                  while (j < len && rtf[j] >= '0' && rtf[j] <= '9') j++;
-                  if (j < len && rtf[j] === ' ') j++;
-                  continue;
-                }
-                else if (depth === 0 && c !== ' ' && c !== '\r' && c !== '\n' && c !== '\t') {
-                  fontName += c;
-                }
-                j++;
-              }
-              fontName = fontName.trim();
-              if (fontName) {
-                fontTable[param] = fontName;
-              }
-            } else {
-              const f = fontTable[param];
-              if (f) cur.font = f;
-            }
-          }
-          break;
-        case 'cf':
-          if (param !== null && colorTable[param]) {
-            cur.color = colorTable[param];
-          }
-          break;
-        case 'qr':
-          cur.align = 'right';
-          if (pendingParagraphTag) {
-            pendingParagraphTag = '<p style="text-align:right">';
-          }
-          break;
-        case 'qc':
-          cur.align = 'center';
-          if (pendingParagraphTag) {
-            pendingParagraphTag = '<p style="text-align:center">';
-          }
-          break;
-        case 'ql':
-          cur.align = 'left';
-          if (pendingParagraphTag) {
-            pendingParagraphTag = '<p style="text-align:left">';
-          }
-          break;
-        case 'qj':
-          cur.align = 'justify';
-          if (pendingParagraphTag) {
-            pendingParagraphTag = '<p style="text-align:justify">';
-          }
-          break;
-        case 'pard':
-          flushText();
-          if (pendingParagraphTag) {
-            out += pendingParagraphTag;
-          }
-          // Reset paragraph formatting (pard resets to defaults)
-          cur.align = null;
-          paragraphHasContent = false;
-          // Don't create the tag yet - wait for alignment commands like \qc, \qr
-          pendingParagraphTag = '<p>'; // Will be updated if alignment is specified
-          break;
-        case 'par':
-          flushText();
-          // If paragraph is empty, just add <br> instead of new paragraph
-          if (!paragraphHasContent && !pendingParagraphTag) {
-            out += '<br/>';
-          } else {
-            if (pendingParagraphTag) {
-              out += pendingParagraphTag;
-              pendingParagraphTag = '';
-            }
-            const parAlign = cur.align;
-            const parStyle = parAlign ? ` style="text-align:${parAlign}"` : '';
-            out += `</p><p${parStyle}>`;
-            paragraphHasContent = false;
-          }
-          // Always reset character formatting after paragraph break
-          cur.bold = false;
-          cur.italic = false;
-          cur.underline = false;
-          break;
-        case 'line':
-          flushText();
-          out += '<br/>';
-          break;
-        case 'tab':
-          appendText('\t');
-          break;
-        case 'uc':
-          if (param !== null && !isNaN(param)) ucSkip = param;
-          break;
-        case 'u':
-          if (param !== null) {
-            let code = param;
-            if (code < 0) code += 65536;
-            appendText(String.fromCharCode(code));
-            skipFallback = ucSkip;
-          }
-          break;
-        case 'colortbl':
-          inColorTable = true;
-          colorTableDepth = stateStack.length;
-          tempColorR = 0; tempColorG = 0; tempColorB = 0;
-          break;
-        case 'red':
-          if (inColorTable && param !== null) tempColorR = param;
-          break;
-        case 'green':
-          if (inColorTable && param !== null) tempColorG = param;
-          break;
-        case 'blue':
-          if (inColorTable && param !== null) tempColorB = param;
-          break;
-        case 'fonttbl':
-          inFontTable = true;
-          fontTableDepth = stateStack.length;
-          break;
-        case 'pict':
-          flushText();
-          let pictType: string | null = null;
-          let pictHex = '';
-          {
-            let depth = 1;
-            while (i < len && depth > 0) {
-              const c = rtf[i++];
-              if (c === '{') { depth++; }
-              else if (c === '}') { depth--; }
-              else if (c === '\\') {
-                let j = i;
-                let tag = '';
-                while (j < len) {
-                  const cc = rtf[j];
-                  if ((cc >= 'a' && cc <= 'z') || (cc >= 'A' && cc <= 'Z')) { tag += cc; j++; }
-                  else break;
-                }
-                if (tag === 'pngblip') pictType = 'image/png';
-                if (tag === 'jpegblip' || tag === 'jpgblip') pictType = 'image/jpeg';
-                i = j;
+          if (i + 1 < len) {
+            const hex = rtf.substr(i, 2);
+            const byte = parseInt(hex, 16);
+            if (!isNaN(byte)) {
+              if (skipFallback > 0) {
+                skipFallback--;
               } else {
-                if (/\s/.test(c)) continue;
-                if (/[0-9A-Fa-f]/.test(c)) {
-                  pictHex += c;
+                const decoded = decodeByteWithEncoding(byte, currentCodePage);
+                appendText(decoded);
+              }
+            }
+            i += 2;
+          }
+          continue;
+        }
+        
+        // Control word
+        let wordStart = i;
+        while (i < len && /[a-z]/i.test(rtf[i])) {
+          i++;
+        }
+        
+        const word = rtf.substring(wordStart, i);
+        let param: number | null = null;
+        
+        // Parse parameter
+        if (i < len && (rtf[i] === '-' || /\d/.test(rtf[i]))) {
+          const numStart = i;
+          if (rtf[i] === '-') i++;
+          while (i < len && /\d/.test(rtf[i])) {
+            i++;
+          }
+          param = parseInt(rtf.substring(numStart, i), 10);
+        }
+        
+        // Optional space after control word
+        if (i < len && rtf[i] === ' ') {
+          i++;
+        }
+        
+        const cur = getCurrentState();
+        
+        // Handle control words
+        switch (word) {
+          case 'ansi':
+            currentCodePage = 'windows-1252';
+            break;
+          case 'ansicpg':
+            if (param === 1256) currentCodePage = 'windows-1256';
+            else if (param === 1252) currentCodePage = 'windows-1252';
+            break;
+            
+          // Character formatting
+          case 'b':
+            const newBold = param === null || param !== 0;
+            if (cur.bold !== newBold) flushText();
+            cur.bold = newBold;
+            break;
+          case 'i':
+            const newItalic = param === null || param !== 0;
+            if (cur.italic !== newItalic) flushText();
+            cur.italic = newItalic;
+            break;
+          case 'ul':
+            const newUnderline = param === null || param !== 0;
+            if (cur.underline !== newUnderline) flushText();
+            cur.underline = newUnderline;
+            break;
+          case 'ulnone':
+            if (cur.underline) flushText();
+            cur.underline = false;
+            break;
+            
+          // Font size
+          case 'fs':
+            if (param !== null) {
+              cur.fontSize = Math.round(param / 2);
+            }
+            break;
+            
+          // Font
+          case 'f':
+            if (param !== null) {
+              if (inFontTable) {
+                // Inside font table: this is defining a font number
+                currentFontNumber = param;
+                fontNameBuffer = '';
+              } else {
+                // Outside font table: selecting a font
+                const fontName = fontTable[param];
+                if (fontName) {
+                  cur.font = fontName;
                 }
               }
             }
-          }
-          if (pictHex.length > 0 && pictType) {
-            try {
-              const bytes = hexToBytes(pictHex);
-              const b64 = bytesToBase64(bytes);
-              out += `<img src="data:${pictType};base64,${b64}" />`;
-            } catch (e) {
-              // ignore
+            break;
+            
+          // Color
+          case 'cf':
+            if (param !== null && param < colorTable.length) {
+              cur.color = colorTable[param];
             }
-          }
-          break;
+            break;
+            
+          // Paragraph alignment
+          case 'qc':
+            cur.align = 'center';
+            if (pendingParagraphTag) {
+              pendingParagraphTag = '<p style="text-align:center">';
+            }
+            break;
+          case 'qr':
+            cur.align = 'right';
+            if (pendingParagraphTag) {
+              pendingParagraphTag = '<p style="text-align:right">';
+            }
+            break;
+          case 'ql':
+            cur.align = 'left';
+            if (pendingParagraphTag) {
+              pendingParagraphTag = '<p style="text-align:left">';
+            }
+            break;
+          case 'qj':
+            cur.align = 'justify';
+            if (pendingParagraphTag) {
+              pendingParagraphTag = '<p style="text-align:justify">';
+            }
+            break;
+            
+          // Paragraph reset
+          case 'pard':
+            flushText();
+            if (pendingParagraphTag) {
+              outputBuffer.push(pendingParagraphTag);
+            }
+            cur.align = null;
+            paragraphHasContent = false;
+            pendingParagraphTag = '<p>';
+            break;
+            
+          // Paragraph break
+          case 'par':
+            flushText();
+            if (!paragraphHasContent && !pendingParagraphTag) {
+              outputBuffer.push('<br/>');
+            } else {
+              if (pendingParagraphTag) {
+                outputBuffer.push(pendingParagraphTag);
+                pendingParagraphTag = '';
+              }
+              const parAlign = cur.align;
+              const parStyle = parAlign ? ` style="text-align:${parAlign}"` : '';
+              outputBuffer.push(`</p><p${parStyle}>`);
+              paragraphHasContent = false;
+            }
+            // DON'T reset formatting - RTF preserves state across paragraphs!
+            // cur.bold, cur.italic, cur.underline should remain unchanged
+            break;
+            
+          // Line break
+          case 'line':
+            flushText();
+            outputBuffer.push('<br/>');
+            break;
+            
+          // Tab
+          case 'tab':
+            appendText('\t');
+            break;
+            
+          // Unicode
+          case 'uc':
+            if (param !== null && !isNaN(param)) ucSkip = param;
+            break;
+          case 'u':
+            if (param !== null) {
+              let code = param;
+              if (code < 0) code += 65536;
+              appendText(String.fromCharCode(code));
+              skipFallback = ucSkip;
+            }
+            break;
+            
+          // Color table
+          case 'colortbl':
+            inColorTable = true;
+            colorTableDepth = stateStack.length;
+            tempColorR = 0;
+            tempColorG = 0;
+            tempColorB = 0;
+            break;
+          case 'red':
+            if (inColorTable && param !== null) tempColorR = param;
+            break;
+          case 'green':
+            if (inColorTable && param !== null) tempColorG = param;
+            break;
+          case 'blue':
+            if (inColorTable && param !== null) tempColorB = param;
+            break;
+            
+          // Font table
+          case 'fonttbl':
+            inFontTable = true;
+            fontTableDepth = stateStack.length;
+            break;
+            
+          // List support (basic)
+          case 'pntext':
+            // Bullet text - ignore for now, we'll use HTML bullets
+            flushText();
+            // Skip until we hit a tab or space
+            while (i < len && rtf[i] !== '\t' && rtf[i] !== ' ' && rtf[i] !== '}') {
+              i++;
+            }
+            break;
+            
+          case 'pn':
+          case 'pnlvlblt':
+            // Start of list definition - mark that we're in a list
+            if (!inList) {
+              flushText();
+              if (pendingParagraphTag) {
+                outputBuffer.push(pendingParagraphTag);
+                pendingParagraphTag = '';
+              }
+              outputBuffer.push('<ul>');
+              inList = true;
+            }
+            break;
+            
+          // Images
+          case 'pict':
+            flushText();
+            let pictType: string | null = null;
+            let picWidth = 0;
+            let picHeight = 0;
+            
+            // Parse picture parameters
+            while (i < len) {
+              if (rtf[i] === ' ') {
+                i++;
+                break;
+              }
+              if (rtf[i] === '\\') {
+                i++;
+                const pictWordStart = i;
+                while (i < len && /[a-z]/i.test(rtf[i])) i++;
+                const pictWord = rtf.substring(pictWordStart, i);
+                
+                let pictParam: number | null = null;
+                if (i < len && /[\d-]/.test(rtf[i])) {
+                  const pictNumStart = i;
+                  if (rtf[i] === '-') i++;
+                  while (i < len && /\d/.test(rtf[i])) i++;
+                  pictParam = parseInt(rtf.substring(pictNumStart, i), 10);
+                }
+                
+                if (pictWord === 'pngblip') pictType = 'image/png';
+                else if (pictWord === 'jpegblip') pictType = 'image/jpeg';
+                else if (pictWord === 'picw' && pictParam) picWidth = pictParam;
+                else if (pictWord === 'pich' && pictParam) picHeight = pictParam;
+                
+                if (i < len && rtf[i] === ' ') i++;
+              } else {
+                i++;
+              }
+            }
+            
+            // Read hex data
+            let hexData = '';
+            while (i < len && rtf[i] !== '}') {
+              const c = rtf[i];
+              if (/[0-9a-fA-F]/.test(c)) {
+                hexData += c;
+              }
+              i++;
+            }
+            
+            if (hexData.length > 0 && pictType) {
+              const bytes = hexToBytes(hexData);
+              const base64 = bytesToBase64(bytes);
+              const imgTag = `<img src="data:${pictType};base64,${base64}" alt="Embedded image"`;
+              if (picWidth && picHeight) {
+                outputBuffer.push(`${imgTag} style="width:${picWidth}px;height:${picHeight}px" />`);
+              } else {
+                outputBuffer.push(`${imgTag} />`);
+              }
+            }
+            continue;
+            
+          // Ignore common control words
+          case 'rtf':
+          case 'deff':
+          case 'deflang':
+          case 'fontemb':
+          case 'fontfile':
+          case 'fcharset':
+          case 'fprq':
+          case 'panose':
+          case 'fname':
+          case 'fbias':
+          case 'flominor':
+          case 'fhimajor':
+          case 'fdbmajor':
+          case 'fbimajor':
+          case 'flomajor':
+          case 'fnil':
+          case 'froman':
+          case 'fswiss':
+          case 'fmodern':
+          case 'fscript':
+          case 'fdecor':
+          case 'ftech':
+          case 'fbidi':
+          case 'viewkind':
+          case 'uc':
+          case 'lang':
+          case 'langfe':
+          case 'langnp':
+          case 'insrsid':
+          case 'charrsid':
+          case 'pararsid':
+          case 'sectrsid':
+          case 'rsid':
+          case 'generator':
+          case 'info':
+          case 'title':
+          case 'subject':
+          case 'author':
+          case 'manager':
+          case 'company':
+          case 'operator':
+          case 'category':
+          case 'keywords':
+          case 'comment':
+          case 'version':
+          case 'doccomm':
+          case 'stylesheet':
+          case 's':
+          case 'cs':
+          case 'ds':
+          case 'ts':
+          case 'tsrowd':
+          case 'ilfomacatclnup':
+          case 'ltrpar':
+          case 'rtlpar':
+          case 'ltrrow':
+          case 'rtlrow':
+          case 'ltrsect':
+          case 'rtlsect':
+          case 'ltrdoc':
+          case 'rtldoc':
+          case 'ltrch':
+          case 'rtlch':
+          case 'loch':
+          case 'hich':
+          case 'dbch':
+          case 'cs':
+          case 'kerning':
+          case 'expnd':
+          case 'expndtw':
+          case 'cchs':
+          case 'super':
+          case 'sub':
+          case 'nosupersub':
+          case 'strike':
+          case 'striked':
+          case 'v':
+          case 'up':
+          case 'dn':
+          case 'caps':
+          case 'scaps':
+          case 'outl':
+          case 'shad':
+          case 'embo':
+          case 'impr':
+          case 'fi':
+          case 'li':
+          case 'ri':
+          case 'sb':
+          case 'sa':
+          case 'sl':
+          case 'slmult':
+          case 'keep':
+          case 'keepn':
+          case 'widctlpar':
+          case 'nowidctlpar':
+          case 'noline':
+          case 'pagebb':
+          case 'hyphpar':
+          case 'intbl':
+          case 'itap':
+          case 'pnlvl':
+          case 'pnf':
+          case 'pnfs':
+          case 'pnindent':
+          case 'pnstart':
+          case 'pndec':
+          case 'pnucltr':
+          case 'pnucrm':
+          case 'pnlcltr':
+          case 'pnlcrm':
+          case 'pncard':
+          case 'pnord':
+          case 'pntxta':
+          case 'pntxtb':
+          case 'pnhang':
+          case 'pnrestart':
+          case 'pnprev':
+            // Ignore these control words
+            break;
+            
+          default:
+            // Unknown control word - ignore in non-strict mode
+            if (this.options.strictMode) {
+              throw new Error(`Unknown RTF control word: \\${word}`);
+            }
+            break;
+        }
+        
+        continue;
       }
-      continue;
+      
+      // Regular text
+      if (ch === '\r' || ch === '\n') {
+        i++;
+        continue;
+      }
+      
+      if (inFontTable && currentFontNumber !== null) {
+        // Collect font name text
+        fontNameBuffer += ch;
+      } else {
+        if (skipFallback > 0) {
+          skipFallback--;
+        } else {
+          appendText(ch);
+        }
+      }
+      
+      i++;
+    }
+
+    // Flush remaining text
+    flushText();
+    
+    // Close any pending paragraph
+    if (pendingParagraphTag) {
+      outputBuffer.push(pendingParagraphTag);
     }
     
-    if (!inFontTable && !inColorTable) {
-      if (skipFallback > 0) {
-        skipFallback--;
-      } else {
-        appendText(ch);
-      }
+    // Close list if still open
+    if (inList) {
+      outputBuffer.push('</ul>');
     }
-    i++;
-  }
 
-  flushText();
-
-  if (!/^\s*<p>/i.test(out)) {
-    out = `<div>${out}</div>`;
+    // Build final HTML
+    let html = `<div>${outputBuffer.join('')}</div>`;
+    
+    // Cleanup empty tags
+    html = cleanupEmptyTags(html);
+    
+    return html;
   }
-  
-  out = out.replace(/^<div>[^<]*?(?=<p>)/, '<div>');
-  
-  // Clean up empty tags iteratively until no more empty tags exist
-  let prevOut = '';
-  while (prevOut !== out) {
-    prevOut = out;
-    // Remove empty inline tags (strong, em, u)
-    out = out.replace(/<(strong|em|u)>\s*<\/\1>/g, '');
-    // Remove empty spans
-    out = out.replace(/<span[^>]*>\s*<\/span>/g, '');
-  }
-  // Finally, replace empty paragraphs with <br/>
-  out = out.replace(/<p[^>]*>\s*<\/p>/g, '<br/>');
-
-  return out;
 }
 
 // ============================================
-// HTML to RTF Converter
+// Convenience Function
+// ============================================
+
+/**
+ * Convert RTF to HTML (convenience function)
+ * @param rtf - RTF document string
+ * @param options - Converter options
+ * @returns HTML string
+ * @throws Error if conversion fails
+ */
+export function rtfToHtml(rtf: string, options?: RtfConverterOptions): string {
+  const converter = new RtfConverter(options);
+  const result = converter.convert(rtf);
+  
+  if (!result.success) {
+    throw new Error(result.error || 'Conversion failed');
+  }
+  
+  return result.data || '';
+}
+
+// ============================================
+// Hex Conversion Utilities
+// ============================================
+
+/**
+ * Convert RTF to Hexadecimal string
+ * Useful for storing RTF in database as hex
+ * @param rtf - RTF document string
+ * @returns Hexadecimal string
+ * @example
+ * const rtf = '{\\rtf1\\ansi Test}';
+ * const hex = rtfToHex(rtf);
+ * console.log(hex); // "7b5c727466315c616e736920546573747d"
+ */
+export function rtfToHex(rtf: string): string {
+  const bytes = new TextEncoder().encode(rtf);
+  return Array.from(bytes)
+    .map(byte => {
+      const hex = byte.toString(16);
+      return hex.length === 1 ? '0' + hex : hex;
+    })
+    .join('');
+}
+
+/**
+ * Convert Hexadecimal string to RTF
+ * Used to retrieve RTF from database hex format
+ * @param hex - Hexadecimal string
+ * @returns RTF document string
+ * @example
+ * const hex = "7b5c727466315c616e736920546573747d";
+ * const rtf = hexToRtf(hex);
+ * console.log(rtf); // "{\rtf1\ansi Test}"
+ */
+export function hexToRtf(hex: string): string {
+  const bytes: number[] = [];
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes.push(parseInt(hex.substr(i, 2), 16));
+  }
+  return new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+}
+
+/**
+ * Convert Hex to HTML directly
+ * Convenience function that combines hexToRtf and rtfToHtml
+ * @param hex - Hexadecimal string from database
+ * @param options - Converter options
+ * @returns Conversion result with HTML or error
+ * @example
+ * const result = hexToHtml(hexFromDb);
+ * if (result.success) {
+ *   console.log(result.data); // HTML output
+ * }
+ */
+export function hexToHtml(hex: string, options?: RtfConverterOptions): ConversionResult<string> {
+  try {
+    const rtf = hexToRtf(hex);
+    const converter = new RtfConverter(options);
+    return converter.convert(rtf);
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Hex to HTML conversion failed',
+    };
+  }
+}
+
+// ============================================
+// HTML to RTF Conversion
 // ============================================
 
 /**
  * Convert HTML to RTF
- * @param html HTML string
- * @returns RTF string
+ * @param html - HTML string
+ * @returns RTF document string
+ * @example
+ * const html = '<p><strong>Hello</strong></p>';
+ * const rtf = htmlToRtf(html);
  */
 export function htmlToRtf(html: string): string {
   const colorTable: string[] = ['\\red0\\green0\\blue0'];
@@ -573,10 +1111,11 @@ export function htmlToRtf(html: string): string {
     colorIndex?: number;
   }
 
-  function parseNode(node: Node, state: HtmlState = {}): string {
+  function parseNode(node: any, state: HtmlState = {}): string {
     const newState = { ...state };
     let content = '';
 
+    // Text node
     if (node.nodeType === 3) {
       let text = node.textContent || '';
       text = text
@@ -593,7 +1132,7 @@ export function htmlToRtf(html: string): string {
       if (newState.fontIndex !== undefined) formatted += `\\f${newState.fontIndex} `;
       if (newState.colorIndex !== undefined) formatted += `\\cf${newState.colorIndex} `;
 
-      formatted += Array.from(text).map(char => {
+      formatted += Array.from(text as string).map((char) => {
         const code = char.charCodeAt(0);
         if (code > 127) {
           return `\\u${code}?`;
@@ -608,8 +1147,9 @@ export function htmlToRtf(html: string): string {
       return formatted;
     }
 
+    // Element node
     if (node.nodeType === 1) {
-      const element = node as Element;
+      const element = node;
       const tagName = element.tagName.toLowerCase();
 
       if (tagName === 'strong' || tagName === 'b') {
@@ -621,7 +1161,7 @@ export function htmlToRtf(html: string): string {
       } else if (tagName === 'span') {
         const style = element.getAttribute('style');
         if (style) {
-          const styles = style.split(';').reduce((acc, s) => {
+          const styles = style.split(';').reduce((acc: any, s: string) => {
             const [key, value] = s.split(':').map(x => x.trim());
             if (key && value) acc[key] = value;
             return acc;
@@ -675,14 +1215,21 @@ export function htmlToRtf(html: string): string {
   }
 
   // Browser environment with DOMParser
-  if (typeof DOMParser !== 'undefined') {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    if (doc.body) {
-      rtfBody = parseNode(doc.body);
+  if (typeof (global as any).DOMParser !== 'undefined' || typeof (global as any).window !== 'undefined') {
+    try {
+      const DOMParserClass = (global as any).DOMParser || (global as any).window?.DOMParser;
+      const parser = new DOMParserClass();
+      const doc = parser.parseFromString(html, 'text/html');
+      if (doc.body) {
+        rtfBody = parseNode(doc.body);
+      }
+    } catch (e) {
+      // Fall through to regex fallback
     }
-  } else {
-    // Fallback for Node.js (simple parsing)
+  }
+  
+  if (!rtfBody) {
+    // Fallback for Node.js (simple regex-based parsing)
     rtfBody = html
       .replace(/<br\s*\/?>/gi, '\\line ')
       .replace(/<p[^>]*>/gi, '\\pard ')
@@ -697,7 +1244,7 @@ export function htmlToRtf(html: string): string {
       .replace(/<\/u>/gi, '\\ul0 ')
       .replace(/<[^>]+>/g, '');
 
-    rtfBody = Array.from(rtfBody).map(char => {
+    rtfBody = Array.from(rtfBody as string).map((char) => {
       const code = char.charCodeAt(0);
       if (code > 127) {
         return `\\u${code}?`;
@@ -723,137 +1270,5 @@ export function htmlToRtf(html: string): string {
   return rtf;
 }
 
-// ============================================
-// Hex Converters
-// ============================================
-
-/**
- * Convert RTF to Hexadecimal string
- * Useful for storing RTF in database as hex
- * @param rtf RTF string
- * @returns Hexadecimal string
- */
-export function rtfToHex(rtf: string): string {
-  const bytes = new TextEncoder().encode(rtf);
-  return Array.from(bytes)
-    .map(byte => byte.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-/**
- * Convert Hexadecimal string to RTF
- * Used to retrieve RTF from database hex format
- * @param hex Hexadecimal string
- * @returns RTF string
- */
-export function hexToRtf(hex: string): string {
-  const bytes: number[] = [];
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes.push(parseInt(hex.substr(i, 2), 16));
-  }
-  return new TextDecoder('utf-8').decode(new Uint8Array(bytes));
-}
-
-// ============================================
-// Safe Conversion Functions (with error handling)
-// ============================================
-
-/**
- * Safe RTF to HTML conversion with error handling
- * @param rtf RTF string or hex string
- * @param options Conversion options
- * @returns Conversion result with success status
- */
-export function safeRtfToHtml(
-  rtf: string,
-  options?: RtfConverterOptions
-): ConversionResult<string> {
-  try {
-    const html = rtfToHtml(rtf);
-    return { success: true, data: html };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-}
-
-/**
- * Safe Hex to HTML conversion (hex from database -> HTML)
- * @param hex Hexadecimal string from database
- * @returns Conversion result with success status
- */
-export function safeHexToHtml(hex: string): ConversionResult<string> {
-  try {
-    const rtf = hexToRtf(hex);
-    const html = rtfToHtml(rtf);
-    return { success: true, data: html };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-}
-
-/**
- * Safe HTML to Hex conversion (HTML -> RTF -> hex for database)
- * @param html HTML string
- * @returns Conversion result with success status
- */
-export function safeHtmlToHex(html: string): ConversionResult<string> {
-  try {
-    const rtf = htmlToRtf(html);
-    const hex = rtfToHex(rtf);
-    return { success: true, data: hex };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-}
-
-// ============================================
-// Batch/List Converters
-// ============================================
-
-/**
- * Convert a list of Hex strings (from database) to an array of HTML strings
- * @param hexes Array of hexadecimal strings
- * @returns Array of HTML strings (same order)
- */
-export function hexListToHtml(hexes: string[]): string[] {
-  if (!Array.isArray(hexes)) return [];
-  return hexes.map((hex) => rtfToHtml(hexToRtf(hex)));
-}
-
-/**
- * Convert a list of Hex strings to a single combined HTML string
- * Each item is wrapped in a <div> and joined with the provided separator
- * @param hexes Array of hexadecimal strings
- * @param separator HTML string used between items (default: <hr/>)
- * @returns Combined HTML string
- */
-export function hexListToCombinedHtml(hexes: string[], separator = '<hr/>'): string {
-  const items = hexListToHtml(hexes).map((html) => `<div>${html}</div>`);
-  return items.join(separator);
-}
-
-/**
- * Safe conversion for list of hex strings to array of HTML strings
- * @param hexes Array of hexadecimal strings
- * @returns ConversionResult with HTML array on success
- */
-export function safeHexListToHtml(hexes: string[]): ConversionResult<string[]> {
-  try {
-    const htmlList = hexListToHtml(hexes);
-    return { success: true, data: htmlList };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-}
+// Export for backward compatibility
+export default rtfToHtml;

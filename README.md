@@ -9,29 +9,35 @@
 ## ⚡ شروع سریع
 
 ```typescript
-import { rtfToHtml, htmlToRtf, rtfToHex, hexToRtf } from './lib/rtf-converter-final';
+import { rtfToHtml, rtfToHtmlSafe, htmlToRtf, rtfToHex, hexToRtf } from './lib/rtf-converter-final';
 
-// RTF to HTML
-const rtf = '{\\rtf1 \\b سلام دنیا\\b0}';
-const html = rtfToHtml(rtf);
-// Output: <div><b>سلام دنیا</b></div>
+// Simple - RTF to HTML
+const html = rtfToHtml('{\\rtf1 \\b سلام\\b0}');
+
+// Safe version با error handling
+const result = rtfToHtmlSafe(rtfString);
+if (result.success) {
+  console.log(result.data);
+} else {
+  console.error(result.error);
+}
 
 // HTML to RTF
-const rtf2 = htmlToRtf('<p><b>Hello</b></p>');
+const rtf = htmlToRtf('<p><b>Hello</b></p>');
 
-// RTF to Hex (برای دیتابیس)
+// RTF ↔ Hex (برای دیتابیس)
 const hex = rtfToHex(rtf);
-
-// Hex to RTF
 const rtfBack = hexToRtf(hex);
 ```
 
 ## ✨ ویژگی‌های اصلی
 
 - ✅ **RTF → HTML** - تبدیل با state restoration کامل
+- ✅ **Safe Functions** - `rtfToHtmlSafe()` با ConversionResult
 - ✅ **HTML → RTF** - ساخت RTF از HTML
 - ✅ **RTF ↔ Hex** - ذخیره در دیتابیس به صورت hex
-- ✅ **Bold/Italic/Underline** - فرمت‌بندی کامل
+- ✅ **Options** - strictMode, codePage, maxSize
+- ✅ **Error Handling** - Try-catch و ConversionResult
 - ✅ **فونت‌ها و رنگ‌ها** - Font tables و Color tables  
 - ✅ **فارسی/عربی** - Windows-1256 با 178 کاراکتر
 - ✅ **Unicode** - پشتیبانی `\uN` و `\'hh` hex escapes

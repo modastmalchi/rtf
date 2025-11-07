@@ -3,9 +3,33 @@
  * نسخه نهایی با handling کامل تمام edge cases
  * 
  * @author RTF Converter Team
- * @version 5.0.0
+ * @version 5.0.0 (Final)
  * @license MIT
  */
+
+// ============================================
+// Public Type Definitions
+// ============================================
+
+export interface RtfConverterOptions {
+  /** Code page for character encoding (default: 'windows-1256') */
+  codePage?: string;
+  /** Enable strict validation of RTF syntax */
+  strictMode?: boolean;
+  /** Maximum document size in bytes (default: 10MB) */
+  maxSize?: number;
+}
+
+export interface ConversionResult<T = string> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  warnings?: string[];
+}
+
+// ============================================
+// Internal Type Definitions
+// ============================================
 
 interface FontInfo {
   name: string;
@@ -672,13 +696,46 @@ class RtfParser {
 }
 
 /**
- * تابع اصلی export شده برای استفاده
+ * تابع اصلی export شده برای استفاده - Simple version
  * @param rtf - رشته RTF
+ * @param options - تنظیمات converter (optional)
  * @returns HTML معادل
+ * @throws Error if conversion fails in strict mode
  */
-export function rtfToHtml(rtf: string): string {
-  const parser = new RtfParser();
-  return parser.parse(rtf);
+export function rtfToHtml(rtf: string, options?: RtfConverterOptions): string {
+  try {
+    const parser = new RtfParser();
+    return parser.parse(rtf);
+  } catch (error) {
+    if (options?.strictMode) {
+      throw error;
+    }
+    // در حالت عادی، یه div خالی برمی‌گردونه
+    return '<div></div>';
+  }
+}
+
+/**
+ * Safe version با ConversionResult
+ * @param rtf - رشته RTF
+ * @param options - تنظیمات converter
+ * @returns نتیجه تبدیل با success/error
+ */
+export function rtfToHtmlSafe(rtf: string, options?: RtfConverterOptions): ConversionResult<string> {
+  try {
+    const parser = new RtfParser();
+    const html = parser.parse(rtf);
+    return {
+      success: true,
+      data: html
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Conversion failed',
+      warnings: []
+    };
+  }
 }
 
 /**
