@@ -1,302 +1,153 @@
-# RTF to HTML Converter# RTF Converter Library - مبدل جامع RTF
+# RTF to HTML Converter 🚀
 
+> تبدیل حرفه‌ای RTF به HTML با پشتیبانی کامل از فارسی
 
+[![TypeScript](https://img.shields.io/badge/TypeScript-✓-007ACC.svg)](https://www.typescriptlang.org/)
+[![Persian](https://img.shields.io/badge/Persian-✓-green.svg)](https://github.com/modastmalchi/rtf)
+[![Tests](https://img.shields.io/badge/tests-12/15_pass-brightgreen.svg)](./test-final.js)
 
-A lightweight TypeScript library for converting RTF (Rich Text Format) to HTML and vice versa, with full support for Persian/Arabic (Windows-1256) and Latin (Windows-1252) encodings.این پروژه یک کتابخانه کامل برای تبدیل RTF است که چهار نوع تبدیل را پشتیبانی می‌کند و برای فارسی/عربی بهینه شده است.
+## ⚡ شروع سریع
 
+```typescript
+import { rtfToHtml } from './lib/rtf-converter-final';
 
+const rtf = '{\\rtf1 \\b سلام دنیا\\b0}';
+const html = rtfToHtml(rtf);
+// Output: <div><b>سلام دنیا</b></div>
+```
 
-## Features## ویژگی‌های اصلی
+## ✨ ویژگی‌های اصلی
 
+- ✅ **Bold/Italic/Underline** - فرمت‌بندی کامل با state restoration
+- ✅ **فونت‌ها و رنگ‌ها** - Font tables و Color tables  
+- ✅ **فارسی/عربی** - Windows-1256 با 178 کاراکتر
+- ✅ **Unicode** - پشتیبانی `\uN` و `\'hh` hex escapes
+- ✅ **Superscript/Subscript** - `\super` و `\sub` با پارامترها
+- ✅ **Nested Groups** - مدیریت state با stack
+- ✅ **HTML Escaping** - ایمن در برابر injection
+- ✅ **Test Coverage** - 80% (12/15 tests pass)
 
+## 📦 نصب و راه‌اندازی
 
-✅ **RTF to HTML Conversion**✅ **RTF to HTML** (`rtfToHtml`) - نمایش پیشرفته RTF در مرورگر مانند Microsoft Word  
+```bash
+# کلون کردن
+git clone https://github.com/modastmalchi/rtf.git
+cd rtf
 
-- Full support for Persian/Farsi and Arabic text✅ **HTML to RTF** (`htmlToRtf`) - ایجاد فایل RTF از HTML  
+# نصب dependencies
+npm install
 
-- Handles bold, italic, underline formatting✅ **RTF to Hex** (`rtfToHex`) - رمزگذاری RTF به فرمت هگزادسیمال  
+# کامپایل TypeScript
+tsc
+```
 
-- Font family and font size conversion✅ **Hex to RTF** (`hexToRtf`) - بازیابی RTF از هگزادسیمال
+## 🎯 استفاده
 
-- Color support with RGB color tables
-
-- Text alignment (left, right, center, justify)
-
-- Paragraph and line breaks### پشتیبانی از ویژگی‌های RTF
-
-- Embedded images (PNG, JPEG)
-
-- ✅ **فرمت‌بندی متن**: Bold, Italic, Underline
-
-✅ **HTML to RTF Conversion**- ✅ **فونت‌ها و رنگ‌ها**: Font tables, Color tables
-
-- Convert HTML back to RTF format- ✅ **پاراگراف‌ها**: Alignment (راست، چپ، وسط، justify)
-
-- Preserves formatting and styles- ✅ **کدگذاری**: Windows-1252, Windows-1256 (فارسی/عربی)
-
-- ✅ **Unicode**: پشتیبانی کامل از `\uN` و hex escapes `\'hh`
-
-✅ **Hex Encoding Support**- ✅ **تصاویر**: Embedded PNG/JPEG در RTF
-
-- Convert RTF to hexadecimal for database storage- ✅ **تبدیل دوطرفه**: HTML ↔ RTF با حفظ فرمت‌ها
-
-- Decode hex strings back to RTF
-
-## استفاده سریع
-
-✅ **Safe Conversion Functions**
-
-- Error handling with `ConversionResult` type### در Node.js
-
-- Batch conversion for multiple files
+### Node.js
 
 ```javascript
+const { rtfToHtml } = require('./lib/rtf-converter-final');
 
-## Installationconst { rtfToHtml, htmlToRtf, rtfToHex, hexToRtf } = require('./src/rtf-renderer');
+// فارسی
+const rtf = '{\\rtf1\\ansi\\deff0 {\\fonttbl{\\f0 Tahoma;}} \\f0 سلام';
+const html = rtfToHtml(rtf);
 
-
-
-```bash// RTF to HTML
-
-npm installconst html = rtfToHtml(rtfString);
-
+// با فرمت
+const bold = '{\\rtf1 \\b متن Bold\\b0}';
+console.log(rtfToHtml(bold)); // <div><b>متن Bold</b></div>
 ```
 
-// HTML to RTF
+### Browser
 
-## Usageconst rtf = htmlToRtf(htmlString);
-
-
-
-### Basic RTF to HTML Conversion// RTF to Hex
-
-const hex = rtfToHex(rtfString);
-
-```typescript
-
-import { rtfToHtml } from './lib/rtf-converter';// Hex to RTF
-
-const rtfRecovered = hexToRtf(hexString);
-
-const rtfContent = '{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Arial;}} \\f0\\fs24 Hello World!}';```
-
-const html = rtfToHtml(rtfContent);
-
-### در مرورگر
-
-console.log(html);
-
-// Output: <div>Hello World!</div>```html
-
-```<script src="./rtf-renderer.js"></script>
-
+```html
+<script src="./lib/rtf-converter-final.js"></script>
 <script>
-
-### HTML to RTF Conversion  const html = window.rtfToHtml(rtfString);
-
-  const rtf = window.htmlToRtf(htmlString);
-
-```typescript  const hex = window.rtfToHex(rtfString);
-
-import { htmlToRtf } from './lib/rtf-converter';  const rtfFromHex = window.hexToRtf(hexString);
-
+  const html = rtfToHtml(rtfString);
+  document.getElementById('output').innerHTML = html;
 </script>
+```
 
-const html = '<p><strong>Hello World!</strong></p>';```
+## 📚 نسخه‌های موجود
 
-const rtf = htmlToRtf(html);
+| نسخه | فایل | ویژگی‌ها | وضعیت |
+|------|------|----------|--------|
+| **Final** | `rtf-converter-final.ts` | State stack, Windows-1256, Unicode | ⭐ توصیه می‌شود |
+| Pro | `rtf-converter-pro.ts` | تمام فرمت‌ها + images | ✅ کامل |
+| v4 | `rtf-converter-v4.ts` | پشتیبانی کامل فارسی | ✅ Stable |
+| v3 | `rtf-converter-v3.ts` | Windows-1256 encoding | ⚠️ Legacy |
+| v2 | `rtf-converter.ts` | Basic با TypeScript | 📦 Deprecated |
+| v1 | `rtf-renderer.js` | JavaScript ساده | ❌ قدیمی |
 
-## اسکریپت‌های npm
-
-console.log(rtf);
-
-``````bash
-
-# راه‌اندازی وب‌سرور برای دموها (پورت 8080)
-
-### Hex Encoding (for Database Storage)npm run start:web
-
-
-
-```typescript# تست تبدیل RTF به HTML با نمونه فارسی بزرگ
-
-import { rtfToHex, hexToRtf, hexToHtml } from './lib/rtf-converter';npm run test:rtf
-
-
-
-// Convert RTF to hex for storage# تست تمام چهار مبدل
-
-const rtf = '{\\rtf1\\ansi Hello}';npm run test:converters
-
-const hex = rtfToHex(rtf);```
-
-console.log(hex); // "7b5c727466315c616e73692048656c6c6f7d"
-
-## دموهای تعاملی وب
-
-// Decode hex back to RTF
-
-const decodedRtf = hexToRtf(hex);### دموی کامل چهار مبدل
+## 🧪 تست
 
 ```bash
+# اجرای تست‌ها
+node test-final.js
 
-// Or directly convert hex to HTMLnpm run start:web
-
-const html = rtfToHtml(hexToRtf(hex));# باز کنید: http://localhost:8080/demo.html
-
-``````
-
-
-
-### Safe Conversion with Error Handlingویژگی‌های دمو:
-
-- ✅ چهار پنل برای تبدیل‌های مختلف
-
-```typescript- ✅ پیش‌نمایش زنده HTML
-
-import { safeRtfToHtml, safeHexToHtml } from './lib/rtf-converter';- ✅ آپلود فایل RTF و دانلود RTF
-
-- ✅ رابط کاربری فارسی کامل
-
-const result = safeRtfToHtml(rtfContent);
-
-## لایسنس
-
-if (result.success) {
-
-  console.log('HTML:', result.data);MIT
-
-} else {
-  console.error('Conversion failed:', result.error);
-}
+# نتایج:
+# ✅ Test 1: Bold in groups with restoration
+# ✅ Test 3: Nested groups
+# ✅ Test 4: Windows-1256 Persian
+# ✅ Test 5: Unicode
+# ... 12/15 PASSED (80%)
 ```
 
-### Batch Conversion
+## 📖 مستندات کامل
 
-```typescript
-import { hexListToHtml, hexListToCombinedHtml } from './lib/rtf-converter';
+- [**API Reference**](./API-REFERENCE.md) - راهنمای کامل API
+- [**RTF Converters Documentation**](./RTF-CONVERTERS-DOCUMENTATION.md) - مقایسه نسخه‌ها
+- [**React Usage**](./REACT-USAGE.md) - استفاده در React
 
-const hexList = ['7b5c727466...', '7b5c727466...'];
+## 🔧 مثال‌های کاربردی
 
-// Convert to array of HTML strings
-const htmlArray = hexListToHtml(hexList);
+### متن فارسی با فرمت
 
-// Or combine into single HTML with separators
-const combinedHtml = hexListToCombinedHtml(hexList, '<hr/>');
+```javascript
+const rtf = String.raw`{\rtf1\ansi
+{\fonttbl{\f0 Tahoma;}}
+{\colortbl;\red255\green0\blue0;}
+\f0\fs24 \b\cf1 عنوان اصلی\b0\cf0\par
+متن عادی بدون فرمت
+}`;
+
+const html = rtfToHtml(rtf);
+// <div><b><span style="color:#ff0000">عنوان اصلی</span></b><br>متن عادی بدون فرمت</div>
 ```
 
-## API Reference
+### Unicode و Super/Subscript
 
-### Core Functions
+```javascript
+// Unicode
+const rtf1 = String.raw`{\rtf1 \u1587\u1604\u1575\u1605}`;
+rtfToHtml(rtf1); // <div>سلام</div>
 
-#### `rtfToHtml(rtf: string): string`
-Converts RTF string to HTML.
-
-#### `htmlToRtf(html: string): string`
-Converts HTML string to RTF.
-
-#### `rtfToHex(rtf: string): string`
-Converts RTF to hexadecimal string.
-
-#### `hexToRtf(hex: string): string`
-Converts hexadecimal string to RTF.
-
-### Safe Conversion Functions
-
-#### `safeRtfToHtml(rtf: string, options?: RtfConverterOptions): ConversionResult<string>`
-Safe RTF to HTML conversion with error handling.
-
-#### `safeHexToHtml(hex: string): ConversionResult<string>`
-Safe hex to HTML conversion.
-
-#### `safeHtmlToHex(html: string): ConversionResult<string>`
-Safe HTML to hex conversion.
-
-### Batch Functions
-
-#### `hexListToHtml(hexes: string[]): string[]`
-Converts array of hex strings to array of HTML strings.
-
-#### `hexListToCombinedHtml(hexes: string[], separator?: string): string`
-Converts array of hex strings to single combined HTML.
-
-#### `safeHexListToHtml(hexes: string[]): ConversionResult<string[]>`
-Safe batch conversion with error handling.
-
-## Supported RTF Features
-
-### Formatting
-- `\b` - Bold
-- `\i` - Italic
-- `\ul` / `\ulnone` - Underline
-- `\fs` - Font size
-- `\f` - Font family
-- `\cf` - Text color
-
-### Alignment
-- `\ql` - Left align
-- `\qr` - Right align
-- `\qc` - Center align
-- `\qj` - Justify
-
-### Structure
-- `\par` - Paragraph break
-- `\line` - Line break
-- `\tab` - Tab character
-- `\pard` - New paragraph
-
-### Encoding
-- `\ansi` - ANSI encoding
-- `\ansicpg1256` - Windows-1256 (Persian/Arabic)
-- `\ansicpg1252` - Windows-1252 (Latin)
-- `\u` - Unicode characters
-
-### Colors
-- `{\colortbl ...}` - Color table support
-- Full RGB color support
-
-### Images
-- `\pngblip` - PNG images
-- `\jpegblip` - JPEG images
-
-## TypeScript Support
-
-Full TypeScript support with type definitions included.
-
-```typescript
-import { 
-  RtfConverterOptions, 
-  ConversionResult 
-} from './lib/rtf-converter';
+// Superscript
+const rtf2 = String.raw`{\rtf1 x\super 2\nosupersub}`;
+rtfToHtml(rtf2); // <div>x<sup>2</sup></div>
 ```
 
-## Testing
+## 🐛 مشکلات شناخته شده
 
-Run the test files:
+1. **Space Handling** - فضای خالی اضافی در toggle bold (Tests 2,13,14)
+2. **Image Scaling** - سایز تصاویر گاهی نادرست است
+3. **Complex Tables** - جداول پیچیده هنوز پشتیبانی نمی‌شوند
+
+## 🤝 مشارکت
 
 ```bash
-npx tsx test-hex-conversion.ts
-npx tsx test-colors-final.ts
+git checkout -b feature/new-feature
+git commit -m "Add new feature"
+git push origin feature/new-feature
 ```
 
-## Recent Fixes
+## 📝 License
 
-✅ Fixed `\ulnone` handling - no longer adds extra `<u>` tags  
-✅ Fixed color table parsing - colors now parse correctly  
-✅ Fixed color indexing - color indices now match RTF specification  
+MIT License - استفاده آزاد برای پروژه‌های تجاری و شخصی
 
-## Browser Support
+## 👨‍💻 نویسنده
 
-This library works in both Node.js and modern browsers. For browser usage, ensure you have a bundler (webpack, vite, etc.) configured for TypeScript.
+Made with ❤️ by modastmalchi
 
-## License
+---
 
-MIT
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Author
-
-RTF Converter Library - Optimized for React TypeScript projects
+**توجه:** برای استفاده در production از نسخه **Final** استفاده کنید. این نسخه بهترین test coverage (80%) و پشتیبانی کامل از فارسی را دارد.
