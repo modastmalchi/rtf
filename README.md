@@ -9,16 +9,29 @@
 ## ⚡ شروع سریع
 
 ```typescript
-import { rtfToHtml } from './lib/rtf-converter-final';
+import { rtfToHtml, htmlToRtf, rtfToHex, hexToRtf } from './lib/rtf-converter-final';
 
+// RTF to HTML
 const rtf = '{\\rtf1 \\b سلام دنیا\\b0}';
 const html = rtfToHtml(rtf);
 // Output: <div><b>سلام دنیا</b></div>
+
+// HTML to RTF
+const rtf2 = htmlToRtf('<p><b>Hello</b></p>');
+
+// RTF to Hex (برای دیتابیس)
+const hex = rtfToHex(rtf);
+
+// Hex to RTF
+const rtfBack = hexToRtf(hex);
 ```
 
 ## ✨ ویژگی‌های اصلی
 
-- ✅ **Bold/Italic/Underline** - فرمت‌بندی کامل با state restoration
+- ✅ **RTF → HTML** - تبدیل با state restoration کامل
+- ✅ **HTML → RTF** - ساخت RTF از HTML
+- ✅ **RTF ↔ Hex** - ذخیره در دیتابیس به صورت hex
+- ✅ **Bold/Italic/Underline** - فرمت‌بندی کامل
 - ✅ **فونت‌ها و رنگ‌ها** - Font tables و Color tables  
 - ✅ **فارسی/عربی** - Windows-1256 با 178 کاراکتر
 - ✅ **Unicode** - پشتیبانی `\uN` و `\'hh` hex escapes
@@ -43,18 +56,27 @@ tsc
 
 ## 🎯 استفاده
 
-### Node.js
+### Node.js - همه تابع‌ها
 
 ```javascript
-const { rtfToHtml } = require('./lib/rtf-converter-final');
+const { rtfToHtml, htmlToRtf, rtfToHex, hexToRtf } = require('./lib/rtf-converter-final');
 
-// فارسی
+// RTF to HTML - فارسی
 const rtf = '{\\rtf1\\ansi\\deff0 {\\fonttbl{\\f0 Tahoma;}} \\f0 سلام';
 const html = rtfToHtml(rtf);
 
-// با فرمت
-const bold = '{\\rtf1 \\b متن Bold\\b0}';
-console.log(rtfToHtml(bold)); // <div><b>متن Bold</b></div>
+// HTML to RTF - ساخت RTF
+const rtf2 = htmlToRtf('<p><b>متن Bold</b></p>');
+
+// RTF to Hex - برای دیتابیس
+const hex = rtfToHex(rtf);
+console.log(hex); // "7b5c727466..."
+
+// Hex to RTF - بازیابی از دیتابیس
+const rtfRecovered = hexToRtf(hex);
+
+// Round-trip test
+console.log(rtf === rtfRecovered); // true ✅
 ```
 
 ### Browser
@@ -62,34 +84,41 @@ console.log(rtfToHtml(bold)); // <div><b>متن Bold</b></div>
 ```html
 <script src="./lib/rtf-converter-final.js"></script>
 <script>
+  // همه تابع‌ها
   const html = rtfToHtml(rtfString);
+  const rtf = htmlToRtf(htmlString);
+  const hex = rtfToHex(rtfString);
+  const rtfBack = hexToRtf(hexString);
+  
   document.getElementById('output').innerHTML = html;
 </script>
 ```
 
 ## 📚 نسخه‌های موجود
 
-| نسخه | فایل | ویژگی‌ها | وضعیت |
-|------|------|----------|--------|
-| **Final** | `rtf-converter-final.ts` | State stack, Windows-1256, Unicode | ⭐ توصیه می‌شود |
-| Pro | `rtf-converter-pro.ts` | تمام فرمت‌ها + images | ✅ کامل |
-| v4 | `rtf-converter-v4.ts` | پشتیبانی کامل فارسی | ✅ Stable |
-| v3 | `rtf-converter-v3.ts` | Windows-1256 encoding | ⚠️ Legacy |
-| v2 | `rtf-converter.ts` | Basic با TypeScript | 📦 Deprecated |
-| v1 | `rtf-renderer.js` | JavaScript ساده | ❌ قدیمی |
+| نسخه | فایل | تابع‌ها | وضعیت |
+|------|------|---------|--------|
+| **Final** | `rtf-converter-final.ts` | 4 تابع (rtfToHtml, htmlToRtf, rtfToHex, hexToRtf) | ⭐ توصیه می‌شود |
+| Pro | `rtf-converter-pro.ts` | rtfToHtml فقط | ✅ کامل |
+| v4 | `rtf-converter-v4.ts` | rtfToHtml فقط | ✅ Stable |
+| v3 | `rtf-converter-v3.ts` | 4 تابع | ⚠️ Legacy |
+| v2 | `rtf-converter.ts` | 4 تابع | 📦 Deprecated |
+| v1 | `rtf-renderer.js` | rtfToHtml فقط | ❌ قدیمی |
 
 ## 🧪 تست
 
 ```bash
-# اجرای تست‌ها
+# تست همه تابع‌ها
+node test-all-functions.js
+
+# تست فقط rtfToHtml
 node test-final.js
 
 # نتایج:
-# ✅ Test 1: Bold in groups with restoration
-# ✅ Test 3: Nested groups
-# ✅ Test 4: Windows-1256 Persian
-# ✅ Test 5: Unicode
-# ... 12/15 PASSED (80%)
+# ✅ rtfToHtml - 12/15 tests (80%)
+# ✅ htmlToRtf - Working
+# ✅ rtfToHex - Working  
+# ✅ hexToRtf - Working
 ```
 
 ## 📖 مستندات کامل
