@@ -37,6 +37,7 @@ interface RtfState {
   color: string | null;
   listLevel: number;
   align: string | null;
+  outlineLevel: number | null; // For headings (0-8)
 }
 
 interface ListState {
@@ -167,6 +168,7 @@ function emptyState(): RtfState {
     color: null,
     listLevel: 0,
     align: null,
+    outlineLevel: null,
   };
 }
 
@@ -359,6 +361,8 @@ export class RtfConverter {
     let curText = '';
     let pendingParagraphTag = '';
     let paragraphHasContent = false;
+    let currentParagraphTag = 'p'; // Track current paragraph/heading tag type
+    let paragraphTagOpen = false; // Track if a paragraph/heading tag is currently open
     
     // List state tracking
     let inList = false;
@@ -376,6 +380,7 @@ export class RtfConverter {
         outputBuffer.push(pendingParagraphTag);
         pendingParagraphTag = '';
         paragraphHasContent = true;
+        paragraphTagOpen = true; // Mark that we opened a tag
       }
       
       const st = stateStack[stateStack.length - 1];
@@ -405,6 +410,21 @@ export class RtfConverter {
 
     const getCurrentState = (): RtfState => {
       return stateStack[stateStack.length - 1];
+    };
+
+    const updatePendingParagraphTag = (): void => {
+      const cur = getCurrentState();
+      let tag = 'p';
+      
+      if (cur.outlineLevel !== null && cur.outlineLevel >= 0 && cur.outlineLevel <= 8) {
+        const headingLevel = Math.min(cur.outlineLevel + 1, 6);
+        tag = `h${headingLevel}`;
+      }
+      
+      currentParagraphTag = tag;
+      const parAlign = cur.align;
+      const parStyle = parAlign ? ` style="text-align:${parAlign}"` : '';
+      pendingParagraphTag = `<${tag}${parStyle}>`;
     };
 
     // Main parsing loop
@@ -604,14 +624,28 @@ export class RtfConverter {
             }
             break;
             
+          // Outline level (for headings)
+          case 'outlinelevel':
+            if (param !== null) {
+              cur.outlineLevel = param;
+              // Update pending tag if we haven't output content yet
+              if (!paragraphHasContent) {
+                updatePendingParagraphTag();
+              }
+            }
+            break;
+            
           // Paragraph reset
           case 'pard':
             flushText();
             if (pendingParagraphTag) {
               outputBuffer.push(pendingParagraphTag);
+              paragraphTagOpen = true;
             }
             cur.align = null;
+            cur.outlineLevel = null; // Reset heading level
             paragraphHasContent = false;
+            currentParagraphTag = 'p';
             pendingParagraphTag = '<p>';
             break;
             
@@ -624,11 +658,13 @@ export class RtfConverter {
               if (pendingParagraphTag) {
                 outputBuffer.push(pendingParagraphTag);
                 pendingParagraphTag = '';
+                paragraphTagOpen = true;
               }
-              const parAlign = cur.align;
-              const parStyle = parAlign ? ` style="text-align:${parAlign}"` : '';
-              outputBuffer.push(`</p><p${parStyle}>`);
+              
+              // Close current paragraph/heading
+              outputBuffer.push(`</${currentParagraphTag}>`);
               paragraphHasContent = false;
+              paragraphTagOpen = false; // Tag is now closed
             }
             // DON'T reset formatting - RTF preserves state across paragraphs!
             // cur.bold, cur.italic, cur.underline should remain unchanged
@@ -925,6 +961,12 @@ export class RtfConverter {
     // Close any pending paragraph
     if (pendingParagraphTag) {
       outputBuffer.push(pendingParagraphTag);
+      paragraphTagOpen = true;
+    }
+    
+    // Close current paragraph/heading tag if it's open
+    if (paragraphTagOpen) {
+      outputBuffer.push(`</${currentParagraphTag}>`);
     }
     
     // Close list if still open
