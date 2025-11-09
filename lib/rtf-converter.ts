@@ -344,16 +344,16 @@ export class RtfConverter {
     const stateStack: RtfState[] = [emptyState()];
     const colorTable: (string | null)[] = [];
     const fontTable: Record<number, string> = {};
-    
+
     let inFontTable = false;
     let inColorTable = false;
+    let inStyleSheet = false;
     let colorTableDepth = 0;
     let fontTableDepth = 0;
+    let styleSheetDepth = 0;
     let tempColorR = 0, tempColorG = 0, tempColorB = 0;
     let currentFontNumber: number | null = null;
-    let fontNameBuffer = '';
-
-    let currentCodePage = this.options.codePage;
+    let fontNameBuffer = '';    let currentCodePage = this.options.codePage;
     let ucSkip = 1;
     let skipFallback = 0;
 
@@ -447,6 +447,9 @@ export class RtfConverter {
         }
         if (inColorTable && currentDepth <= colorTableDepth) {
           inColorTable = false;
+        }
+        if (inStyleSheet && currentDepth <= styleSheetDepth) {
+          inStyleSheet = false;
         }
         
         popState();
@@ -593,9 +596,10 @@ export class RtfConverter {
             
           // Color
           case 'cf':
-            if (param !== null && param < colorTable.length) {
-              cur.color = colorTable[param];
-            }
+            // Ignore colors for now - all text will be black
+            // if (param !== null && param < colorTable.length) {
+            //   cur.color = colorTable[param];
+            // }
             break;
             
           // Paragraph alignment
@@ -716,6 +720,12 @@ export class RtfConverter {
           case 'fonttbl':
             inFontTable = true;
             fontTableDepth = stateStack.length;
+            break;
+            
+          // Stylesheet
+          case 'stylesheet':
+            inStyleSheet = true;
+            styleSheetDepth = stateStack.length;
             break;
             
           // List support (basic)
@@ -849,7 +859,6 @@ export class RtfConverter {
           case 'comment':
           case 'version':
           case 'doccomm':
-          case 'stylesheet':
           case 's':
           case 'cs':
           case 'ds':
@@ -944,6 +953,9 @@ export class RtfConverter {
       if (inFontTable && currentFontNumber !== null) {
         // Collect font name text
         fontNameBuffer += ch;
+      } else if (inStyleSheet) {
+        // Ignore text inside stylesheet
+        // (e.g., "Normal", "heading 1", etc.)
       } else {
         if (skipFallback > 0) {
           skipFallback--;
