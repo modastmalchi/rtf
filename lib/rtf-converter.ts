@@ -989,9 +989,10 @@ export class RtfConverter {
       outputBuffer.push('</ul>');
     }
 
-    // Build final HTML with text direction
+    // Build final HTML with text direction and text-align
     const dirAttr = this.options.dir ? ` dir="${this.options.dir}"` : '';
-    let html = `<div${dirAttr}>${outputBuffer.join('')}</div>`;
+    const textAlign = this.options.dir === 'rtl' ? 'right' : 'left';
+    let html = `<div${dirAttr} style="text-align:${textAlign}">${outputBuffer.join('')}</div>`;
     
     // Cleanup empty tags
     html = cleanupEmptyTags(html);
