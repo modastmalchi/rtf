@@ -363,15 +363,29 @@ if (result.success && result.data) {
 
 ```typescript
 interface RtfConverterOptions {
-  codePage?: string;  // e.g., 'windows-1256', 'windows-1252'
+  codePage?: string;       // e.g., 'windows-1256', 'windows-1252'
+  strictMode?: boolean;    // Enable strict validation (default: false)
+  maxSize?: number;        // Maximum document size in bytes (default: 10MB)
+  dir?: 'rtl' | 'ltr';     // Text direction (default: 'rtl' for Persian/Arabic)
 }
 ```
 
 **استفاده:**
 ```typescript
+// برای فارسی/عربی (پیش‌فرض RTL)
 const options: RtfConverterOptions = {
-  codePage: 'windows-1256'
+  codePage: 'windows-1256',
+  dir: 'rtl'  // راست به چپ (پیش‌فرض)
 };
+
+// برای انگلیسی
+const optionsLTR: RtfConverterOptions = {
+  codePage: 'windows-1252',
+  dir: 'ltr'  // چپ به راست
+};
+
+const html = rtfToHtml(rtf, options);
+// خروجی: <div dir="rtl">...</div>
 ```
 
 ---

@@ -19,6 +19,8 @@ export interface RtfConverterOptions {
   strictMode?: boolean;
   /** Maximum document size in bytes (default: 10MB) */
   maxSize?: number;
+  /** Text direction: 'rtl' (right-to-left) or 'ltr' (left-to-right). Default: 'rtl' for Persian/Arabic */
+  dir?: 'rtl' | 'ltr';
 }
 
 export interface ConversionResult<T = string> {
@@ -54,6 +56,7 @@ const DEFAULT_OPTIONS: Required<RtfConverterOptions> = {
   codePage: 'windows-1252',
   strictMode: false,
   maxSize: 10 * 1024 * 1024, // 10MB
+  dir: 'rtl', // Default to RTL for Persian/Arabic support
 };
 
 const RTF_HEADER_REGEX = /^{\\rtf1/;
@@ -986,8 +989,9 @@ export class RtfConverter {
       outputBuffer.push('</ul>');
     }
 
-    // Build final HTML
-    let html = `<div>${outputBuffer.join('')}</div>`;
+    // Build final HTML with text direction
+    const dirAttr = this.options.dir ? ` dir="${this.options.dir}"` : '';
+    let html = `<div${dirAttr}>${outputBuffer.join('')}</div>`;
     
     // Cleanup empty tags
     html = cleanupEmptyTags(html);

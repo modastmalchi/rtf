@@ -9,10 +9,15 @@
 ## ⚡ شروع سریع
 
 ```typescript
-import { rtfToHtml, rtfToHtmlSafe, htmlToRtf, rtfToHex, hexToRtf } from './lib/rtf-converter-final';
+import { rtfToHtml, rtfToHtmlSafe, htmlToRtf, rtfToHex, hexToRtf } from '@modastmalchi/rtf-converter';
 
-// Simple - RTF to HTML
+// Simple - RTF to HTML (پیش‌فرض RTL)
 const html = rtfToHtml('{\\rtf1 \\b سلام\\b0}');
+// خروجی: <div dir="rtl"><span><strong>سلام</strong></span></div>
+
+// با Options - تعیین جهت متن
+const htmlRtl = rtfToHtml(rtfString, { dir: 'rtl' }); // راست به چپ (فارسی/عربی)
+const htmlLtr = rtfToHtml(rtfString, { dir: 'ltr' }); // چپ به راست (انگلیسی)
 
 // Safe version با error handling
 const result = rtfToHtmlSafe(rtfString);
@@ -36,7 +41,8 @@ const rtfBack = hexToRtf(hex);
 - ✅ **Safe Functions** - `rtfToHtmlSafe()` با ConversionResult
 - ✅ **HTML → RTF** - ساخت RTF از HTML
 - ✅ **RTF ↔ Hex** - ذخیره در دیتابیس به صورت hex
-- ✅ **Options** - strictMode, codePage, maxSize
+- ✅ **RTL/LTR Support** - پشتیبانی کامل از جهت متن (راست به چپ/چپ به راست)
+- ✅ **Options** - strictMode, codePage, maxSize, dir
 - ✅ **Error Handling** - Try-catch و ConversionResult
 - ✅ **فونت‌ها و رنگ‌ها** - Font tables و Color tables  
 - ✅ **فارسی/عربی** - Windows-1256 با 178 کاراکتر
