@@ -1,14 +1,20 @@
 {
-  "name": "rtf-html-converter",
+  "name": "@modastmalchi/rtf-converter",
   "version": "1.0.0",
-  "description": "RTF to HTML converter with full Persian/Arabic support",
-  "main": "lib/rtf-converter.ts",
+  "description": "Professional RTF ↔ HTML converter with full Persian/Arabic support. Bidirectional conversion with heading support, text formatting, and encoding handling.",
+  "main": "lib/rtf-converter.js",
   "types": "lib/rtf-converter.ts",
+  "files": [
+    "lib/rtf-converter.js",
+    "lib/rtf-converter.ts",
+    "lib/useRtfConverter.ts",
+    "README.md",
+    "API-REFERENCE.md"
+  ],
   "scripts": {
-    "test": "tsx test-hex-conversion.ts",
-    "test:colors": "tsx test-colors-final.ts",
-    "server": "node server.js",
-    "dev": "nodemon server.js"
+    "build": "tsc lib/rtf-converter.ts --target ES2020 --module commonjs",
+    "test": "node test-converter.js && node test-headings.js && node test-complex-persian.js && node test-html-to-rtf-align.js",
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "rtf",
@@ -19,9 +25,23 @@
     "farsi",
     "rtf-to-html",
     "html-to-rtf",
-    "typescript"
+    "typescript",
+    "bidirectional",
+    "windows-1256",
+    "encoding",
+    "react",
+    "heading",
+    "formatting"
   ],
-  "author": "",
+  "author": "Mostafa Dastmalchi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/modastmalchi/rtf.git"
+  },
+  "homepage": "https://github.com/modastmalchi/rtf#readme",
+  "bugs": {
+    "url": "https://github.com/modastmalchi/rtf/issues"
+  },
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^24.6.2",

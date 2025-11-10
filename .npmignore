@@ -1,0 +1,23 @@
+# Test files
+test-*.js
+test-*.ts
+
+# Source files (only compiled JS needed)
+src/
+examples/
+
+# Development files
+tsconfig.json
+.gitignore
+.git/
+node_modules/
+dist/
+public/
+
+# Documentation (except main README and API reference)
+REACT-USAGE.md
+
+# Build artifacts
+*.log
+yarn.lock
+package-lock.json
