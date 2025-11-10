@@ -1139,9 +1139,9 @@ export function htmlToRtf(html: string): string {
     return null;
   }
 
-  const fontTable: string[] = ['Arial'];
+  const fontTable: string[] = ['B Nazanin'];
   const fontMap = new Map<string, number>();
-  fontMap.set('arial', 0);
+  fontMap.set('b nazanin', 0);
 
   function getFontIndex(fontFamily: string): number | null {
     if (!fontFamily || fontFamily === 'inherit' || fontFamily === 'initial') return null;
