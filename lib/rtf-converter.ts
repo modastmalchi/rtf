@@ -1286,6 +1286,11 @@ export function htmlToRtf(html: string): string {
     // Fallback for Node.js (simple regex-based parsing)
     rtfBody = html
       .replace(/<br\s*\/?>/gi, '\\line ')
+      // Handle paragraphs with alignment
+      .replace(/<p[^>]*style=["']([^"']*text-align:\s*center[^"']*)["'][^>]*>/gi, '\\pard\\qc ')
+      .replace(/<p[^>]*style=["']([^"']*text-align:\s*right[^"']*)["'][^>]*>/gi, '\\pard\\qr ')
+      .replace(/<p[^>]*style=["']([^"']*text-align:\s*left[^"']*)["'][^>]*>/gi, '\\pard\\ql ')
+      .replace(/<p[^>]*style=["']([^"']*text-align:\s*justify[^"']*)["'][^>]*>/gi, '\\pard\\qj ')
       .replace(/<p[^>]*>/gi, '\\pard ')
       .replace(/<\/p>/gi, '\\par\n')
       .replace(/<div[^>]*>/gi, '\\pard ')
