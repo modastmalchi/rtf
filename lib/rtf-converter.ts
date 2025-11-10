@@ -4,7 +4,7 @@
  * Optimized for React TypeScript projects
  * Supports Persian/Arabic (Windows-1256) and Latin (Windows-1252)
  * 
- * @author Your Name
+ * @author Mostafa Dastmalchi
  * @version 3.0.0
  */
 
@@ -1269,10 +1269,9 @@ export function htmlToRtf(html: string): string {
   }
 
   // Browser environment with DOMParser
-  if (typeof (global as any).DOMParser !== 'undefined' || typeof (global as any).window !== 'undefined') {
+  if (typeof DOMParser !== 'undefined' || (typeof window !== 'undefined' && typeof window.DOMParser !== 'undefined')) {
     try {
-      const DOMParserClass = (global as any).DOMParser || (global as any).window?.DOMParser;
-      const parser = new DOMParserClass();
+      const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
       if (doc.body) {
         rtfBody = parseNode(doc.body);
