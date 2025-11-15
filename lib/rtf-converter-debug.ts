@@ -684,8 +684,7 @@ export class RtfConverter {
             
             // Check if this pard is ending a list (if followed by text, not by pntext)
             // We'll check if the next non-whitespace is NOT pntext
-            // Note: i is already positioned after the command word and parameter
-            let tempI = i - 1; // Will be incremented in the while loop
+            let tempI = i;
             let isPardEndingList = inList;
             
             // Look ahead to see if there's a pntext or bullet coming
@@ -700,6 +699,7 @@ export class RtfConverter {
                 }
                 const word = rtf.substring(wordStart, wordEnd);
                 if (word === 'pntext' || word === 'bullet') {
+                  console.log('[DEBUG] Found', word, 'after pard - NOT ending list');
                   // This pard is part of list continuation
                   isPardEndingList = false;
                   break;
@@ -718,6 +718,7 @@ export class RtfConverter {
             }
             
             // Close list if this pard is ending it
+            console.log('[DEBUG] pard: isPardEndingList=', isPardEndingList, 'inList=', inList);
             if (isPardEndingList && inList) {
               if (listItems.length > 0) {
                 outputBuffer.push('</li>');
@@ -735,10 +736,7 @@ export class RtfConverter {
             cur.outlineLevel = null; // Reset heading level
             paragraphHasContent = false;
             currentParagraphTag = 'p';
-            // Don't set pendingParagraphTag if we're in a list
-            if (!inList) {
-              pendingParagraphTag = '<p>';
-            }
+            pendingParagraphTag = '<p>';
             break;
             
           // Paragraph break
@@ -795,8 +793,6 @@ export class RtfConverter {
                 outputBuffer.push(`</${currentParagraphTag}>`);
                 paragraphTagOpen = false;
               }
-              // Clear any pending paragraph tag when starting list
-              pendingParagraphTag = '';
               outputBuffer.push('<ul>');
               inList = true;
             }
