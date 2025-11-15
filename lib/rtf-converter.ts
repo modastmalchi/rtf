@@ -687,6 +687,11 @@ export class RtfConverter {
           case 'tab':
             appendText('\t');
             break;
+          
+          // Bullet point
+          case 'bullet':
+            appendText('•');
+            break;
             
           // Unicode
           case 'uc':
@@ -1255,6 +1260,22 @@ export function htmlToRtf(html: string): string {
           }
         }
         content += '\\pard' + align;
+      } else if (tagName === 'ul' || tagName === 'ol') {
+        // Lists - just process children (li elements)
+        for (const child of Array.from(node.childNodes)) {
+          content += parseNode(child, newState);
+        }
+        return content;
+      } else if (tagName === 'li') {
+        // List item - add bullet/number and paragraph
+        const isOrdered = node.parentNode && node.parentNode.tagName && node.parentNode.tagName.toLowerCase() === 'ol';
+        if (isOrdered) {
+          // For ordered lists, we'll add numbers manually
+          content += '\\pard ';
+        } else {
+          // For unordered lists, add bullet
+          content += '\\pard \\bullet\\tab ';
+        }
       } else if (tagName === 'br') {
         return '\\line ';
       }
@@ -1263,7 +1284,7 @@ export function htmlToRtf(html: string): string {
         content += parseNode(child, newState);
       }
 
-      if (tagName === 'p' || tagName === 'div') {
+      if (tagName === 'p' || tagName === 'div' || tagName === 'li') {
         content += '\\par\n';
       }
 
@@ -1290,6 +1311,13 @@ export function htmlToRtf(html: string): string {
     // Fallback for Node.js (simple regex-based parsing)
     rtfBody = html
       .replace(/<br\s*\/?>/gi, '\\line ')
+      // Handle lists
+      .replace(/<ul[^>]*>/gi, '')
+      .replace(/<\/ul>/gi, '')
+      .replace(/<ol[^>]*>/gi, '')
+      .replace(/<\/ol>/gi, '')
+      .replace(/<li[^>]*>/gi, '\\pard \\bullet\\tab ')
+      .replace(/<\/li>/gi, '\\par\n')
       // Handle paragraphs with alignment
       .replace(/<p[^>]*style=["']([^"']*text-align:\s*center[^"']*)["'][^>]*>/gi, '\\pard\\qc ')
       .replace(/<p[^>]*style=["']([^"']*text-align:\s*right[^"']*)["'][^>]*>/gi, '\\pard\\qr ')
