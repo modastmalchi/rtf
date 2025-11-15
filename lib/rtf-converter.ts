@@ -379,7 +379,8 @@ export class RtfConverter {
     const flushText = (): void => {
       if (!curText) return;
       
-      if (pendingParagraphTag) {
+      // Don't add paragraph tags inside list items
+      if (pendingParagraphTag && !inList) {
         outputBuffer.push(pendingParagraphTag);
         pendingParagraphTag = '';
         paragraphHasContent = true;
@@ -659,6 +660,13 @@ export class RtfConverter {
           // Paragraph break
           case 'par':
             flushText();
+            
+            // If in list, just close the current list item (don't add </li> yet, bullet will do it)
+            if (inList) {
+              // List item content continues until next bullet or end of list
+              break;
+            }
+            
             if (!paragraphHasContent && !pendingParagraphTag) {
               outputBuffer.push('<br/>');
             } else {
@@ -690,7 +698,23 @@ export class RtfConverter {
           
           // Bullet point
           case 'bullet':
-            appendText('•');
+            // Start list if not already in one
+            if (!inList) {
+              flushText();
+              if (paragraphTagOpen) {
+                outputBuffer.push(`</${currentParagraphTag}>`);
+                paragraphTagOpen = false;
+              }
+              outputBuffer.push('<ul>');
+              inList = true;
+            }
+            // Close previous list item if any
+            if (listItems.length > 0) {
+              outputBuffer.push('</li>');
+            }
+            // Start new list item
+            outputBuffer.push('<li>');
+            listItems.push('');
             break;
             
           // Unicode
@@ -991,6 +1015,9 @@ export class RtfConverter {
     
     // Close list if still open
     if (inList) {
+      if (listItems.length > 0) {
+        outputBuffer.push('</li>');
+      }
       outputBuffer.push('</ul>');
     }
 
