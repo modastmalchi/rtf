@@ -351,6 +351,8 @@ export class RtfConverter {
     let inFontTable = false;
     let inColorTable = false;
     let inStyleSheet = false;
+    let inPnTextGroup = false; // Track if we're inside {\pntext...} group
+    let pnTextDepth = 0;
     let colorTableDepth = 0;
     let fontTableDepth = 0;
     let styleSheetDepth = 0;
@@ -455,6 +457,11 @@ export class RtfConverter {
         if (inStyleSheet && currentDepth <= styleSheetDepth) {
           inStyleSheet = false;
         }
+        if (inPnTextGroup && currentDepth <= pnTextDepth) {
+          inPnTextGroup = false;
+          // Clear any text accumulated in pntext group
+          curText = '';
+        }
         
         popState();
         i++;
@@ -495,6 +502,14 @@ export class RtfConverter {
             appendText(next);
           }
           i++;
+          continue;
+        }
+        
+        // Ignorable destination marker (\*)
+        if (next === '*') {
+          // Skip the entire ignorable destination group
+          i++; // Skip the *
+          // The group will be handled by the normal { } matching
           continue;
         }
         
@@ -808,7 +823,13 @@ export class RtfConverter {
           // List support (basic)
           case 'pntext':
             // This marks the start of a list item's bullet/number text
+            // Clear any accumulated text first (bullet markers before this command)
+            curText = '';
             flushText();
+            
+            // Mark that we're inside pntext group
+            inPnTextGroup = true;
+            pnTextDepth = stateStack.length;
             
             // Start list if not already in one
             if (!inList) {
@@ -828,14 +849,6 @@ export class RtfConverter {
             // Start new list item
             outputBuffer.push('<li>');
             listItems.push('');
-            
-            // Skip the pntext group content (we don't need to show the bullet marker)
-            let depth = 1; // We're inside the { of {\pntext...}
-            while (i < len && depth > 0) {
-              i++;
-              if (rtf[i] === '{') depth++;
-              else if (rtf[i] === '}') depth--;
-            }
             break;
             
           case 'pn':
