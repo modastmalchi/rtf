@@ -646,6 +646,51 @@ export class RtfConverter {
           // Paragraph reset
           case 'pard':
             flushText();
+            
+            // Check if this pard is ending a list (if followed by text, not by pntext)
+            // We'll check if the next non-whitespace is NOT pntext
+            let tempI = i;
+            let isPardEndingList = inList;
+            
+            // Look ahead to see if there's a pntext coming
+            while (tempI < len && isPardEndingList) {
+              tempI++;
+              const ch = rtf[tempI];
+              if (ch === '\\') {
+                const wordStart = tempI + 1;
+                let wordEnd = wordStart;
+                while (wordEnd < len && /[a-z]/.test(rtf[wordEnd])) {
+                  wordEnd++;
+                }
+                const word = rtf.substring(wordStart, wordEnd);
+                if (word === 'pntext') {
+                  // This pard is part of list continuation
+                  isPardEndingList = false;
+                  break;
+                }
+                // If we hit other commands, stop looking
+                if (word && word !== 'rtlpar' && word !== 'ltrpar' && word !== 'fi' && word !== 'ri' && word !== 'qr' && word !== 'ql' && word !== 'qc') {
+                  break;
+                }
+                tempI = wordEnd;
+              } else if (ch === '{' || ch === '}') {
+                break;
+              } else if (ch !== ' ' && ch !== '\n' && ch !== '\r' && ch !== '\t') {
+                // Hit actual text - this pard ends the list
+                break;
+              }
+            }
+            
+            // Close list if this pard is ending it
+            if (isPardEndingList && inList) {
+              if (listItems.length > 0) {
+                outputBuffer.push('</li>');
+              }
+              outputBuffer.push('</ul>');
+              inList = false;
+              listItems = [];
+            }
+            
             if (pendingParagraphTag) {
               outputBuffer.push(pendingParagraphTag);
               paragraphTagOpen = true;
@@ -762,11 +807,34 @@ export class RtfConverter {
             
           // List support (basic)
           case 'pntext':
-            // Bullet text - ignore for now, we'll use HTML bullets
+            // This marks the start of a list item's bullet/number text
             flushText();
-            // Skip until we hit a tab or space
-            while (i < len && rtf[i] !== '\t' && rtf[i] !== ' ' && rtf[i] !== '}') {
+            
+            // Start list if not already in one
+            if (!inList) {
+              if (paragraphTagOpen) {
+                outputBuffer.push(`</${currentParagraphTag}>`);
+                paragraphTagOpen = false;
+              }
+              outputBuffer.push('<ul>');
+              inList = true;
+            }
+            
+            // Close previous list item if any
+            if (listItems.length > 0) {
+              outputBuffer.push('</li>');
+            }
+            
+            // Start new list item
+            outputBuffer.push('<li>');
+            listItems.push('');
+            
+            // Skip the pntext group content (we don't need to show the bullet marker)
+            let depth = 1; // We're inside the { of {\pntext...}
+            while (i < len && depth > 0) {
               i++;
+              if (rtf[i] === '{') depth++;
+              else if (rtf[i] === '}') depth--;
             }
             break;
             
