@@ -1389,7 +1389,7 @@ export function htmlToRtf(html: string): string {
             if (!isNaN(size)) newState.fontSize = size;
           }
         }
-      } else if (tagName === 'p' || tagName === 'div') {
+      } else if (tagName === 'p') {
         const style = element.getAttribute('style');
         let align = '';
         if (style) {
@@ -1403,6 +1403,13 @@ export function htmlToRtf(html: string): string {
           }
         }
         content += '\\pard\\rtlpar' + align;
+      } else if (tagName === 'div') {
+        // Div is just a container - don't add paragraph markers
+        // Just process children
+        for (const child of Array.from(node.childNodes)) {
+          content += parseNode(child, newState);
+        }
+        return content;
       } else if (tagName === 'ul' || tagName === 'ol') {
         // Lists - just process children (li elements)
         for (const child of Array.from(node.childNodes)) {
@@ -1427,7 +1434,7 @@ export function htmlToRtf(html: string): string {
         content += parseNode(child, newState);
       }
 
-      if (tagName === 'p' || tagName === 'div' || tagName === 'li') {
+      if (tagName === 'p' || tagName === 'li') {
         content += '\\par\n';
       }
 
@@ -1468,8 +1475,8 @@ export function htmlToRtf(html: string): string {
       .replace(/<p[^>]*style=["']([^"']*text-align:\s*justify[^"']*)["'][^>]*>/gi, '\\pard\\rtlpar\\qj ')
       .replace(/<p[^>]*>/gi, '\\pard\\rtlpar ')
       .replace(/<\/p>/gi, '\\par\n')
-      .replace(/<div[^>]*>/gi, '\\pard\\rtlpar ')
-      .replace(/<\/div>/gi, '\\par\n')
+      // Remove div tags - they're just containers
+      .replace(/<\/?div[^>]*>/gi, '')
       .replace(/<strong[^>]*>|<b[^>]*>/gi, '\\b ')
       .replace(/<\/strong>|<\/b>/gi, '\\b0 ')
       .replace(/<em[^>]*>|<i[^>]*>/gi, '\\i ')
