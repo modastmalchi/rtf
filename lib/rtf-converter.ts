@@ -439,6 +439,25 @@ export class RtfConverter {
       
       if (ch === '{') {
         flushText();
+        
+        // Check if this is an ignorable destination {\*...}
+        if (i + 1 < len && rtf[i + 1] === '\\' && i + 2 < len && rtf[i + 2] === '*') {
+          // Skip the entire ignorable destination group
+          i++; // Skip {
+          let depth = 1;
+          while (i < len && depth > 0) {
+            i++;
+            if (rtf[i] === '{') depth++;
+            else if (rtf[i] === '}') depth--;
+            else if (rtf[i] === '\\' && i + 1 < len) {
+              // Skip escaped characters
+              i++;
+            }
+          }
+          i++; // Skip the final }
+          continue;
+        }
+        
         pushState();
         i++;
         continue;
@@ -522,7 +541,8 @@ export class RtfConverter {
             if (!isNaN(byte)) {
               if (skipFallback > 0) {
                 skipFallback--;
-              } else {
+              } else if (!inPnTextGroup) {
+                // Ignore hex characters inside pntext group (bullet markers)
                 const decoded = decodeByteWithEncoding(byte, currentCodePage);
                 appendText(decoded);
               }
@@ -753,11 +773,17 @@ export class RtfConverter {
             
           // Tab
           case 'tab':
-            appendText('\t');
+            if (!inPnTextGroup) {
+              appendText('\t');
+            }
             break;
           
           // Bullet point
           case 'bullet':
+            if (inPnTextGroup) {
+              // Ignore bullets inside pntext group
+              break;
+            }
             // Start list if not already in one
             if (!inList) {
               flushText();
@@ -1069,6 +1095,9 @@ export class RtfConverter {
       } else if (inStyleSheet) {
         // Ignore text inside stylesheet
         // (e.g., "Normal", "heading 1", etc.)
+      } else if (inPnTextGroup) {
+        // Ignore text inside pntext group
+        // (bullet markers, tabs, etc.)
       } else {
         if (skipFallback > 0) {
           skipFallback--;
