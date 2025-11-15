@@ -1402,7 +1402,7 @@ export function htmlToRtf(html: string): string {
             else if (alignment === 'left') align = '\\ql ';
           }
         }
-        content += '\\pard' + align;
+        content += '\\pard\\rtlpar' + align;
       } else if (tagName === 'ul' || tagName === 'ol') {
         // Lists - just process children (li elements)
         for (const child of Array.from(node.childNodes)) {
@@ -1414,10 +1414,10 @@ export function htmlToRtf(html: string): string {
         const isOrdered = node.parentNode && node.parentNode.tagName && node.parentNode.tagName.toLowerCase() === 'ol';
         if (isOrdered) {
           // For ordered lists, we'll add numbers manually
-          content += '\\pard ';
+          content += '\\pard\\rtlpar ';
         } else {
           // For unordered lists, add bullet
-          content += '\\pard \\bullet\\tab ';
+          content += '\\pard\\rtlpar \\bullet\\tab ';
         }
       } else if (tagName === 'br') {
         return '\\line ';
@@ -1459,16 +1459,16 @@ export function htmlToRtf(html: string): string {
       .replace(/<\/ul>/gi, '')
       .replace(/<ol[^>]*>/gi, '')
       .replace(/<\/ol>/gi, '')
-      .replace(/<li[^>]*>/gi, '\\pard \\bullet\\tab ')
+      .replace(/<li[^>]*>/gi, '\\pard\\rtlpar \\bullet\\tab ')
       .replace(/<\/li>/gi, '\\par\n')
       // Handle paragraphs with alignment
-      .replace(/<p[^>]*style=["']([^"']*text-align:\s*center[^"']*)["'][^>]*>/gi, '\\pard\\qc ')
-      .replace(/<p[^>]*style=["']([^"']*text-align:\s*right[^"']*)["'][^>]*>/gi, '\\pard\\qr ')
-      .replace(/<p[^>]*style=["']([^"']*text-align:\s*left[^"']*)["'][^>]*>/gi, '\\pard\\ql ')
-      .replace(/<p[^>]*style=["']([^"']*text-align:\s*justify[^"']*)["'][^>]*>/gi, '\\pard\\qj ')
-      .replace(/<p[^>]*>/gi, '\\pard ')
+      .replace(/<p[^>]*style=["']([^"']*text-align:\s*center[^"']*)["'][^>]*>/gi, '\\pard\\rtlpar\\qc ')
+      .replace(/<p[^>]*style=["']([^"']*text-align:\s*right[^"']*)["'][^>]*>/gi, '\\pard\\rtlpar\\qr ')
+      .replace(/<p[^>]*style=["']([^"']*text-align:\s*left[^"']*)["'][^>]*>/gi, '\\pard\\rtlpar\\ql ')
+      .replace(/<p[^>]*style=["']([^"']*text-align:\s*justify[^"']*)["'][^>]*>/gi, '\\pard\\rtlpar\\qj ')
+      .replace(/<p[^>]*>/gi, '\\pard\\rtlpar ')
       .replace(/<\/p>/gi, '\\par\n')
-      .replace(/<div[^>]*>/gi, '\\pard ')
+      .replace(/<div[^>]*>/gi, '\\pard\\rtlpar ')
       .replace(/<\/div>/gi, '\\par\n')
       .replace(/<strong[^>]*>|<b[^>]*>/gi, '\\b ')
       .replace(/<\/strong>|<\/b>/gi, '\\b0 ')
