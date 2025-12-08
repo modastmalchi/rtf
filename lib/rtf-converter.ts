@@ -37,6 +37,7 @@ interface RtfState {
   fontSize: number | null;
   font: string | null;
   color: string | null;
+  colorIndex: number | null;
   listLevel: number;
   align: string | null;
   outlineLevel: number | null; // For headings (0-8)
@@ -169,6 +170,7 @@ function emptyState(): RtfState {
     fontSize: null,
     font: null,
     color: null,
+    colorIndex: null,
     listLevel: 0,
     align: null,
     outlineLevel: null,
@@ -178,13 +180,19 @@ function emptyState(): RtfState {
 /**
  * Convert RTF state to inline CSS style string
  * @param s - RTF state
+ * @param colorTable - Color table for resolving color indices
  * @returns CSS style attribute content
  */
-function stateToStyle(s: RtfState): string {
+function stateToStyle(s: RtfState, colorTable: (string | null)[]): string {
   const styles: string[] = [];
   if (s.font) styles.push(`font-family:${s.font}`);
   if (s.fontSize) styles.push(`font-size:${s.fontSize}pt`);
-  if (s.color) styles.push(`color:${s.color}`);
+  if (s.colorIndex !== null && s.colorIndex > 0 && s.colorIndex < colorTable.length) {
+    const color = colorTable[s.colorIndex];
+    if (color) styles.push(`color:${color}`);
+  } else if (s.color) {
+    styles.push(`color:${s.color}`);
+  }
   return styles.length ? ` style="${styles.join(';')}"` : '';
 }
 
@@ -390,7 +398,7 @@ export class RtfConverter {
       }
       
       const st = stateStack[stateStack.length - 1];
-      const style = stateToStyle(st);
+      const style = stateToStyle(st, colorTable);
       const openTags = openInlineTags(st);
       const closeTags = closeInlineTags(st);
       
@@ -635,10 +643,18 @@ export class RtfConverter {
             
           // Color
           case 'cf':
-            // Ignore colors for now - all text will be black
-            // if (param !== null && param < colorTable.length) {
-            //   cur.color = colorTable[param];
-            // }
+            if (param !== null) {
+              // Flush text with current color before changing
+              const currentColorIndex = cur.colorIndex;
+              if (param === 0) {
+                // \cf0 means reset to no color
+                if (currentColorIndex !== null) flushText();
+                cur.colorIndex = null;
+              } else if (param <= colorTable.length) {
+                if (currentColorIndex !== param) flushText();
+                cur.colorIndex = param;
+              }
+            }
             break;
             
           // Paragraph alignment
@@ -1262,6 +1278,28 @@ export function htmlToRtf(html: string): string {
 
     let normalized = color.toLowerCase().trim();
 
+    // Named colors to RGB mapping
+    const namedColors: Record<string, string> = {
+      'red': 'rgb(255,0,0)',
+      'green': 'rgb(0,128,0)',
+      'blue': 'rgb(0,0,255)',
+      'yellow': 'rgb(255,255,0)',
+      'cyan': 'rgb(0,255,255)',
+      'magenta': 'rgb(255,0,255)',
+      'white': 'rgb(255,255,255)',
+      'black': 'rgb(0,0,0)',
+      'gray': 'rgb(128,128,128)',
+      'grey': 'rgb(128,128,128)',
+      'orange': 'rgb(255,165,0)',
+      'purple': 'rgb(128,0,128)',
+      'brown': 'rgb(165,42,42)',
+      'pink': 'rgb(255,192,203)'
+    };
+
+    if (namedColors[normalized]) {
+      normalized = namedColors[normalized];
+    }
+
     if (normalized.startsWith('#')) {
       const hex = normalized.substring(1);
       const r = parseInt(hex.substring(0, 2), 16);
@@ -1496,9 +1534,14 @@ export function htmlToRtf(html: string): string {
           const fontIndex = getFontIndex(fontFamilyMatch[1]);
           if (fontIndex !== null) rtf += `\\f${fontIndex} `;
         }
+        const colorMatch = style.match(/color:\s*([^;]+)/);
+        if (colorMatch) {
+          const colorIndex = getColorIndex(colorMatch[1]);
+          if (colorIndex) rtf += `\\cf${colorIndex} `;
+        }
         return rtf;
       })
-      .replace(/<\/span>/gi, '')
+      .replace(/<\/span>/gi, '\\cf0 ') // Reset color to default (black)
       .replace(/<[^>]+>/g, '');
 
     rtfBody = Array.from(rtfBody as string).map((char) => {
