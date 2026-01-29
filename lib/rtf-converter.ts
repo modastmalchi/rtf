@@ -41,6 +41,10 @@ interface RtfState {
   listLevel: number;
   align: string | null;
   outlineLevel: number | null; // For headings (0-8)
+  // New fields for advanced features
+  inTable: boolean; // Are we inside a table?
+  marginLeft: number; // Left margin (\li)
+  marginRight: number; // Right margin (\ri)
 }
 
 interface ListState {
@@ -174,6 +178,9 @@ function emptyState(): RtfState {
     listLevel: 0,
     align: null,
     outlineLevel: null,
+    inTable: false,
+    marginLeft: 0,
+    marginRight: 0,
   };
 }
 
@@ -193,6 +200,9 @@ function stateToStyle(s: RtfState, colorTable: (string | null)[]): string {
   } else if (s.color) {
     styles.push(`color:${s.color}`);
   }
+  // Add margins if present
+  if (s.marginLeft > 0) styles.push(`margin-left:${s.marginLeft}pt`);
+  if (s.marginRight > 0) styles.push(`margin-right:${s.marginRight}pt`);
   return styles.length ? ` style="${styles.join(';')}"` : '';
 }
 
@@ -381,6 +391,9 @@ export class RtfConverter {
     let inList = false;
     let listLevel = 0;
     let listItems: string[] = [];
+    
+    // Table state tracking
+    let tableCellOpen = false;
 
     const appendText = (txt: string): void => {
       curText += escapeHtml(txt);
@@ -388,6 +401,13 @@ export class RtfConverter {
 
     const flushText = (): void => {
       if (!curText) return;
+      
+      // If we're in a table and no cell is open, open one
+      const cur = getCurrentState();
+      if (cur.inTable && !tableCellOpen) {
+        outputBuffer.push('<td style="border:1px solid #000;padding:5px">');
+        tableCellOpen = true;
+      }
       
       // Don't add paragraph tags inside list items
       if (pendingParagraphTag && !inList) {
@@ -697,6 +717,33 @@ export class RtfConverter {
           // Paragraph reset
           case 'pard':
             flushText();
+            
+            // Check if we're exiting a table
+            if (cur.inTable) {
+              // Look ahead to see if table continues
+              let tableCheckI = i;
+              let isTableEnd = true;
+              while (tableCheckI < len && tableCheckI < i + 100) {
+                if (rtf[tableCheckI] === '\\') {
+                  const wordStart = tableCheckI + 1;
+                  let wordEnd = wordStart;
+                  while (wordEnd < len && /[a-z]/.test(rtf[wordEnd])) {
+                    wordEnd++;
+                  }
+                  const word = rtf.substring(wordStart, wordEnd);
+                  if (word === 'trowd' || word === 'cell' || word === 'row') {
+                    isTableEnd = false;
+                    break;
+                  }
+                }
+                tableCheckI++;
+              }
+              
+              if (isTableEnd) {
+                outputBuffer.push('</table>');
+                cur.inTable = false;
+              }
+            }
             
             // Check if this pard is ending a list (if followed by text, not by pntext)
             // We'll check if the next non-whitespace is NOT pntext
@@ -1058,9 +1105,82 @@ export class RtfConverter {
           case 'shad':
           case 'embo':
           case 'impr':
-          case 'fi':
+          // Margins
           case 'li':
+            if (param !== null) {
+              cur.marginLeft = Math.round(param / 20); // Convert twips to points
+            }
+            break;
           case 'ri':
+            if (param !== null) {
+              cur.marginRight = Math.round(param / 20); // Convert twips to points
+            }
+            break;
+            
+          // Page break
+          case 'page':
+            flushText();
+            outputBuffer.push('<div style="page-break-after:always"></div>');
+            break;
+            
+          // Tab stops (basic support - treat as spaces for now)
+          case 'tqc':
+          case 'tqr':
+          case 'tql':
+          case 'tx':
+            // Tab positions - we'll handle tabs as simple spacing
+            break;
+            
+          // Table support
+          case 'trowd':
+            // Start of table row definition
+            flushText();
+            if (!cur.inTable) {
+              if (paragraphTagOpen) {
+                outputBuffer.push(`</${currentParagraphTag}>`);
+                paragraphTagOpen = false;
+              }
+              outputBuffer.push('<table style="border-collapse:collapse">');
+              cur.inTable = true;
+            }
+            outputBuffer.push('<tr>');
+            tableCellOpen = false;
+            break;
+            
+          case 'cellx':
+            // Cell width definition - just metadata, skip
+            break;
+            
+          case 'intbl':
+            // We're inside a table - open a cell if needed
+            if (!tableCellOpen) {
+              flushText();
+              outputBuffer.push('<td style="border:1px solid #000;padding:5px">');
+              tableCellOpen = true;
+            }
+            break;
+            
+          case 'cell':
+            // End of table cell
+            flushText();
+            if (tableCellOpen) {
+              outputBuffer.push('</td>');
+            }
+            // Prepare for next cell - it will open automatically when text comes
+            tableCellOpen = false;
+            break;
+            
+          case 'row':
+            // End of table row
+            flushText();
+            if (tableCellOpen) {
+              outputBuffer.push('</td>');
+              tableCellOpen = false;
+            }
+            outputBuffer.push('</tr>');
+            break;
+            
+          case 'fi':
           case 'sb':
           case 'sa':
           case 'sl':
