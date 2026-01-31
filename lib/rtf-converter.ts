@@ -45,6 +45,7 @@ interface RtfState {
   inTable: boolean; // Are we inside a table?
   marginLeft: number; // Left margin (\li)
   marginRight: number; // Right margin (\ri)
+  tableAlign: string | null; // Table alignment (left/center/right)
 }
 
 interface ListState {
@@ -181,6 +182,7 @@ function emptyState(): RtfState {
     inTable: false,
     marginLeft: 0,
     marginRight: 0,
+    tableAlign: null,
   };
 }
 
@@ -1140,11 +1142,41 @@ export class RtfConverter {
                 outputBuffer.push(`</${currentParagraphTag}>`);
                 paragraphTagOpen = false;
               }
-              outputBuffer.push('<table style="border-collapse:collapse">');
+              // Apply table alignment based on cur.tableAlign
+              let tableStyle = 'border-collapse:collapse;';
+              if (cur.tableAlign === 'center') {
+                tableStyle += 'margin-left:auto;margin-right:auto';
+              } else if (cur.tableAlign === 'right') {
+                tableStyle += 'margin-left:auto;margin-right:0';
+              } else {
+                // Default: left align
+                tableStyle += 'margin-left:0;margin-right:auto';
+              }
+              outputBuffer.push(`<table style="${tableStyle}">`);
               cur.inTable = true;
             }
             outputBuffer.push('<tr>');
             tableCellOpen = false;
+            break;
+            
+          case 'trql':
+            // Table row align left
+            cur.tableAlign = 'left';
+            break;
+            
+          case 'trqc':
+            // Table row align center
+            cur.tableAlign = 'center';
+            break;
+            
+          case 'trqr':
+            // Table row align right
+            cur.tableAlign = 'right';
+            break;
+            
+          case 'trleft':
+            // Table left position - we'll treat this as left alignment
+            cur.tableAlign = 'left';
             break;
             
           case 'cellx':
