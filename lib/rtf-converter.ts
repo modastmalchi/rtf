@@ -233,9 +233,8 @@ function stateToStyle(s: RtfState, colorTable: (string | null)[]): string {
   } else if (s.color) {
     styles.push(`color:${s.color}`);
   }
-  // Add margins if present
-  if (s.marginLeft > 0) styles.push(`margin-left:${s.marginLeft}pt`);
-  if (s.marginRight > 0) styles.push(`margin-right:${s.marginRight}pt`);
+  // Note: margins (marginLeft, marginRight) are for paragraphs, not inline spans
+  // They should be applied to paragraph tags, not span tags
   return styles.length ? ` style="${styles.join(';')}"` : '';
 }
 
@@ -766,7 +765,7 @@ export class RtfConverter {
                     wordEnd++;
                   }
                   const word = rtf.substring(wordStart, wordEnd);
-                  if (word === 'trowd' || word === 'cell' || word === 'row') {
+                  if (word === 'trowd' || word === 'cell' || word === 'row' || word === 'intbl') {
                     isTableEnd = false;
                     break;
                   }
