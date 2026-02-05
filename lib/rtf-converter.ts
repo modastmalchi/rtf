@@ -124,6 +124,7 @@ function escapeHtml(s: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+    .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;') // Tab to 8 non-breaking spaces
     .replace(/ /g, '&nbsp;');
 }
 
@@ -1667,6 +1668,8 @@ export function htmlToRtf(html: string): string {
     // Text node
     if (node.nodeType === 3) {
       let text = node.textContent || '';
+      // Convert tab placeholder to RTF tab
+      text = text.replace(/\{\{TAB\}\}/g, '\\tab ');
       text = text
         .replace(/\\/g, '\\\\')
         .replace(/\{/g, '\\{')
@@ -1789,8 +1792,10 @@ export function htmlToRtf(html: string): string {
   // Browser environment with DOMParser
   if (typeof DOMParser !== 'undefined' || (typeof window !== 'undefined' && typeof window.DOMParser !== 'undefined')) {
     try {
+      // Replace 8 consecutive &nbsp; with tab placeholder before parsing
+      const htmlWithTabs = html.replace(/(&nbsp;){8}/g, '{{TAB}}');
       const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
+      const doc = parser.parseFromString(htmlWithTabs, 'text/html');
       if (doc.body) {
         rtfBody = parseNode(doc.body);
       }
@@ -1802,6 +1807,7 @@ export function htmlToRtf(html: string): string {
   if (!rtfBody) {
     // Decode HTML entities first
     html = html
+      .replace(/(&nbsp;){8}/g, '\t') // 8 consecutive non-breaking spaces to tab
       .replace(/&nbsp;/g, ' ')
       .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')
@@ -1809,6 +1815,7 @@ export function htmlToRtf(html: string): string {
     
     // Fallback for Node.js (simple regex-based parsing)
     rtfBody = html
+      .replace(/\t/g, '\\tab ') // Convert tab characters to RTF tab
       .replace(/<br\s*\/?>/gi, '\\line ')
       // Handle lists
       .replace(/<ul[^>]*>/gi, '')
