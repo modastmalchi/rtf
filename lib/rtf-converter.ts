@@ -30,6 +30,22 @@ export interface ConversionResult<T = string> {
   warnings?: string[];
 }
 
+interface CellBorders {
+  top: boolean;
+  bottom: boolean;
+  left: boolean;
+  right: boolean;
+}
+
+interface CellProperties {
+  width: number | null; // Cell width in twips
+  borders: CellBorders;
+  backgroundColor: string | null;
+  verticalAlign: string | null; // top, center, bottom
+  mergeFirst: boolean; // First cell in merged range
+  merged: boolean; // Merged with previous cell
+}
+
 interface RtfState {
   bold: boolean;
   italic: boolean;
@@ -99,15 +115,16 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 /**
- * Escape HTML special characters
+ * Escape HTML special characters and convert spaces to entities
  * @param s - Input string
- * @returns HTML-safe string
+ * @returns HTML-safe string with character entities
  */
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/ /g, '&nbsp;');
 }
 
 /**
@@ -183,6 +200,20 @@ function emptyState(): RtfState {
     marginLeft: 0,
     marginRight: 0,
     tableAlign: null,
+  };
+}
+
+/**
+ * Create default cell properties
+ */
+function createDefaultCellProps(): CellProperties {
+  return {
+    width: null,
+    borders: { top: true, bottom: true, left: true, right: true },
+    backgroundColor: null,
+    verticalAlign: null,
+    mergeFirst: false,
+    merged: false,
   };
 }
 
@@ -396,6 +427,8 @@ export class RtfConverter {
     
     // Table state tracking
     let tableCellOpen = false;
+    let currentCellProps: CellProperties = createDefaultCellProps();
+    let cellPropsArray: CellProperties[] = []; // For current row
 
     const appendText = (txt: string): void => {
       curText += escapeHtml(txt);
@@ -1135,8 +1168,10 @@ export class RtfConverter {
             
           // Table support
           case 'trowd':
-            // Start of table row definition
+            // Start of table row definition - reset cell properties
             flushText();
+            cellPropsArray = [];
+            currentCellProps = createDefaultCellProps();
             if (!cur.inTable) {
               if (paragraphTagOpen) {
                 outputBuffer.push(`</${currentParagraphTag}>`);
@@ -1179,15 +1214,130 @@ export class RtfConverter {
             cur.tableAlign = 'left';
             break;
             
+          // Cell border definitions
+          case 'clbrdrt':
+            // Cell border top
+            currentCellProps.borders.top = true;
+            break;
+            
+          case 'clbrdrb':
+            // Cell border bottom
+            currentCellProps.borders.bottom = true;
+            break;
+            
+          case 'clbrdrl':
+            // Cell border left
+            currentCellProps.borders.left = true;
+            break;
+            
+          case 'clbrdrr':
+            // Cell border right
+            currentCellProps.borders.right = true;
+            break;
+            
+          // Cell merging
+          case 'clmgf':
+            // First cell in merged range
+            currentCellProps.mergeFirst = true;
+            break;
+            
+          case 'clmrg':
+            // Merged with previous cell
+            currentCellProps.merged = true;
+            break;
+            
+          // Cell vertical alignment
+          case 'clvertalt':
+            // Align top
+            currentCellProps.verticalAlign = 'top';
+            break;
+            
+          case 'clvertalc':
+            // Align center
+            currentCellProps.verticalAlign = 'middle';
+            break;
+            
+          case 'clvertalb':
+            // Align bottom
+            currentCellProps.verticalAlign = 'bottom';
+            break;
+            
+          // Cell background color
+          case 'clcbpat':
+            // Cell background color index
+            if (param !== null && param > 0 && param <= colorTable.length) {
+              currentCellProps.backgroundColor = colorTable[param - 1];
+            }
+            break;
+            
           case 'cellx':
-            // Cell width definition - just metadata, skip
+            // Cell width definition (right edge position in twips)
+            if (param !== null) {
+              const prevWidth = cellPropsArray.length > 0 ? 
+                (cellPropsArray[cellPropsArray.length - 1].width || 0) : 0;
+              currentCellProps.width = param - prevWidth;
+            }
+            // Store current cell properties and create new for next cell
+            cellPropsArray.push({...currentCellProps});
+            currentCellProps = createDefaultCellProps();
             break;
             
           case 'intbl':
             // We're inside a table - open a cell if needed
             if (!tableCellOpen) {
               flushText();
-              outputBuffer.push('<td style="border:1px solid #000;padding:5px">');
+              
+              // Get cell properties for current cell
+              const cellIndex = cellPropsArray.length > 0 ? 
+                outputBuffer.filter(s => s.includes('<td')).length % cellPropsArray.length : 0;
+              const cellProps = cellPropsArray[cellIndex] || createDefaultCellProps();
+              
+              // Skip if this is a merged cell (not the first in merge)
+              if (cellProps.merged && !cellProps.mergeFirst) {
+                tableCellOpen = false;
+                break;
+              }
+              
+              // Build cell style
+              let cellStyle = 'padding:5px;';
+              
+              // Borders
+              if (cellProps.borders.top) cellStyle += 'border-top:1px solid #000;';
+              if (cellProps.borders.bottom) cellStyle += 'border-bottom:1px solid #000;';
+              if (cellProps.borders.left) cellStyle += 'border-left:1px solid #000;';
+              if (cellProps.borders.right) cellStyle += 'border-right:1px solid #000;';
+              
+              // Width (convert twips to pixels: 1 twip = 1/1440 inch, assume 96 DPI)
+              if (cellProps.width) {
+                const widthPx = Math.round(cellProps.width * 96 / 1440);
+                cellStyle += `width:${widthPx}px;`;
+              }
+              
+              // Background color
+              if (cellProps.backgroundColor) {
+                cellStyle += `background-color:${cellProps.backgroundColor};`;
+              }
+              
+              // Vertical alignment
+              if (cellProps.verticalAlign) {
+                cellStyle += `vertical-align:${cellProps.verticalAlign};`;
+              }
+              
+              // Colspan for merged cells
+              let colspan = '';
+              if (cellProps.mergeFirst) {
+                let mergeCount = 1;
+                for (let i = cellIndex + 1; i < cellPropsArray.length; i++) {
+                  if (cellPropsArray[i].merged && !cellPropsArray[i].mergeFirst) {
+                    mergeCount++;
+                  } else {
+                    break;
+                  }
+                }
+                if (mergeCount > 1) colspan = ` colspan="${mergeCount}"`;
+              }
+              
+              outputBuffer.push(`<td${colspan} style="${cellStyle}">`);
               tableCellOpen = true;
             }
             break;
@@ -1210,6 +1360,9 @@ export class RtfConverter {
               tableCellOpen = false;
             }
             outputBuffer.push('</tr>');
+            // Reset cell properties for next row
+            cellPropsArray = [];
+            currentCellProps = createDefaultCellProps();
             break;
             
           case 'fi':
@@ -1648,6 +1801,13 @@ export function htmlToRtf(html: string): string {
   }
   
   if (!rtfBody) {
+    // Decode HTML entities first
+    html = html
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>');
+    
     // Fallback for Node.js (simple regex-based parsing)
     rtfBody = html
       .replace(/<br\s*\/?>/gi, '\\line ')
