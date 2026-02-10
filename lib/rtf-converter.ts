@@ -491,8 +491,14 @@ export class RtfConverter {
       }
       
       currentParagraphTag = tag;
-      const parAlign = cur.align;
-      const parStyle = parAlign ? ` style="text-align:${parAlign}"` : '';
+      
+      // Build style string
+      const styles: string[] = [];
+      if (cur.align) styles.push(`text-align:${cur.align}`);
+      if (cur.marginLeft > 0) styles.push(`margin-left:${cur.marginLeft}pt`);
+      if (cur.marginRight > 0) styles.push(`margin-right:${cur.marginRight}pt`);
+      
+      const parStyle = styles.length > 0 ? ` style="${styles.join(';')}"` : '';
       pendingParagraphTag = `<${tag}${parStyle}>`;
     };
 
@@ -715,26 +721,26 @@ export class RtfConverter {
           // Paragraph alignment
           case 'qc':
             cur.align = 'center';
-            if (pendingParagraphTag) {
-              pendingParagraphTag = '<p style="text-align:center">';
+            if (pendingParagraphTag && !paragraphHasContent) {
+              updatePendingParagraphTag();
             }
             break;
           case 'qr':
             cur.align = 'right';
-            if (pendingParagraphTag) {
-              pendingParagraphTag = '<p style="text-align:right">';
+            if (pendingParagraphTag && !paragraphHasContent) {
+              updatePendingParagraphTag();
             }
             break;
           case 'ql':
             cur.align = 'left';
-            if (pendingParagraphTag) {
-              pendingParagraphTag = '<p style="text-align:left">';
+            if (pendingParagraphTag && !paragraphHasContent) {
+              updatePendingParagraphTag();
             }
             break;
           case 'qj':
             cur.align = 'justify';
-            if (pendingParagraphTag) {
-              pendingParagraphTag = '<p style="text-align:justify">';
+            if (pendingParagraphTag && !paragraphHasContent) {
+              updatePendingParagraphTag();
             }
             break;
             
@@ -1144,11 +1150,17 @@ export class RtfConverter {
           case 'li':
             if (param !== null) {
               cur.marginLeft = Math.round(param / 20); // Convert twips to points
+              if (pendingParagraphTag && !paragraphHasContent) {
+                updatePendingParagraphTag();
+              }
             }
             break;
           case 'ri':
             if (param !== null) {
               cur.marginRight = Math.round(param / 20); // Convert twips to points
+              if (pendingParagraphTag && !paragraphHasContent) {
+                updatePendingParagraphTag();
+              }
             }
             break;
             
@@ -1686,6 +1698,10 @@ export function htmlToRtf(html: string): string {
 
       formatted += Array.from(text as string).map((char) => {
         const code = char.charCodeAt(0);
+        // Convert non-breaking space to RTF tilde
+        if (code === 160 || code === 0xA0) {
+          return '~';
+        }
         if (code > 127) {
           return `\\u${code}?`;
         }
@@ -1737,6 +1753,7 @@ export function htmlToRtf(html: string): string {
       } else if (tagName === 'p') {
         const style = element.getAttribute('style');
         let align = '';
+        let margins = '';
         if (style) {
           const alignMatch = style.match(/text-align:\s*(\w+)/);
           if (alignMatch) {
@@ -1746,9 +1763,33 @@ export function htmlToRtf(html: string): string {
             else if (alignment === 'justify') align = '\\qj ';
             else if (alignment === 'left') align = '\\ql ';
           }
+          
+          // Parse margins (convert px to twips: 1px ≈ 15 twips at 96 DPI)
+          // Also support pt: 1pt = 20 twips
+          const marginLeftMatch = style.match(/margin-left:\s*(\d+)(px|pt)/);
+          if (marginLeftMatch) {
+            const marginValue = parseInt(marginLeftMatch[1]);
+            const unit = marginLeftMatch[2];
+            const marginTwips = unit === 'pt' ? marginValue * 20 : Math.round(marginValue * 15);
+            margins += `\\li${marginTwips} `;
+          }
+          
+          const marginRightMatch = style.match(/margin-right:\s*(\d+)(px|pt)/);
+          if (marginRightMatch) {
+            const marginValue = parseInt(marginRightMatch[1]);
+            const unit = marginRightMatch[2];
+            const marginTwips = unit === 'pt' ? marginValue * 20 : Math.round(marginValue * 15);
+            margins += `\\ri${marginTwips} `;
+          }
         }
-        content += '\\pard\\rtlpar' + align;
+        content += '\\pard\\rtlpar' + align + margins;
       } else if (tagName === 'div') {
+        // Check for page break
+        const style = element.getAttribute('style');
+        if (style && style.includes('page-break-after:always')) {
+          return '\\page\n';
+        }
+        
         // Div is just a container - don't add paragraph markers
         // Just process children
         for (const child of Array.from(node.childNodes)) {
@@ -1773,6 +1814,12 @@ export function htmlToRtf(html: string): string {
         }
       } else if (tagName === 'br') {
         return '\\line ';
+      } else if (tagName === 'table') {
+        // Handle tables
+        return parseTable(node);
+      } else if (tagName === 'tr' || tagName === 'td' || tagName === 'th') {
+        // These are handled inside parseTable, skip if encountered alone
+        return '';
       }
 
       for (const child of Array.from(node.childNodes)) {
@@ -1787,6 +1834,71 @@ export function htmlToRtf(html: string): string {
     }
 
     return content;
+  }
+
+  // Parse HTML table to RTF table
+  function parseTable(tableNode: any): string {
+    let tableRtf = '';
+    const rows = Array.from(tableNode.querySelectorAll('tr')) as any[];
+    
+    if (rows.length === 0) return '';
+
+    for (const row of rows) {
+      const cells = Array.from((row as any).querySelectorAll('td, th')) as any[];
+      if (cells.length === 0) continue;
+
+      // Start row definition
+      tableRtf += '\\trowd\\trleft0';
+
+      // Calculate cell positions (in twips, 1440 twips = 1 inch)
+      let cellX = 0;
+      const cellWidths: number[] = [];
+
+      // Extract cell widths and borders
+      cells.forEach((cell: any, index: number) => {
+        const style = cell.getAttribute('style') || '';
+        
+        // Parse width
+        let width = 1440; // Default 1 inch
+        const widthMatch = style.match(/width:\s*(\d+)px/);
+        if (widthMatch) {
+          const widthPx = parseInt(widthMatch[1]);
+          width = Math.round(widthPx * 1440 / 96); // Convert px to twips (96 DPI)
+        }
+        cellWidths.push(width);
+
+        // Parse borders
+        const hasBorderTop = style.includes('border-top');
+        const hasBorderBottom = style.includes('border-bottom');
+        const hasBorderLeft = style.includes('border-left');
+        const hasBorderRight = style.includes('border-right');
+
+        // Add cell border definitions
+        if (hasBorderTop) tableRtf += '\\clbrdrt\\brdrs\\brdrw15 ';
+        if (hasBorderBottom) tableRtf += '\\clbrdrb\\brdrs\\brdrw15 ';
+        if (hasBorderLeft) tableRtf += '\\clbrdrl\\brdrs\\brdrw15 ';
+        if (hasBorderRight) tableRtf += '\\clbrdrr\\brdrs\\brdrw15 ';
+
+        // Define cell X position
+        cellX += width;
+        tableRtf += `\\cellx${cellX}`;
+      });
+
+      // Add cell contents
+      cells.forEach((cell: any) => {
+        tableRtf += '\\pard\\intbl\\rtlpar ';
+        // Parse cell content
+        for (const child of Array.from(cell.childNodes)) {
+          tableRtf += parseNode(child);
+        }
+        tableRtf += '\\cell ';
+      });
+
+      // End row
+      tableRtf += '\\row\n';
+    }
+
+    return tableRtf;
   }
 
   // Browser environment with DOMParser
@@ -1807,8 +1919,9 @@ export function htmlToRtf(html: string): string {
   if (!rtfBody) {
     // Decode HTML entities first
     html = html
+      .replace(/\{\{TAB\}\}/g, '\t') // Convert {{TAB}} placeholder to tab character
       .replace(/(&nbsp;){8}/g, '\t') // 8 consecutive non-breaking spaces to tab
-      .replace(/&nbsp;/g, ' ')
+      .replace(/&nbsp;/g, '\u00A0') // Convert &nbsp; to non-breaking space character
       .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>');
@@ -1824,14 +1937,94 @@ export function htmlToRtf(html: string): string {
       .replace(/<\/ol>/gi, '')
       .replace(/<li[^>]*>/gi, '\\pard\\rtlpar \\bullet\\tab ')
       .replace(/<\/li>/gi, '\\par\n')
-      // Handle paragraphs with alignment
-      .replace(/<p[^>]*style=["']([^"']*text-align:\s*center[^"']*)["'][^>]*>/gi, '\\pard\\rtlpar\\qc ')
-      .replace(/<p[^>]*style=["']([^"']*text-align:\s*right[^"']*)["'][^>]*>/gi, '\\pard\\rtlpar\\qr ')
-      .replace(/<p[^>]*style=["']([^"']*text-align:\s*left[^"']*)["'][^>]*>/gi, '\\pard\\rtlpar\\ql ')
-      .replace(/<p[^>]*style=["']([^"']*text-align:\s*justify[^"']*)["'][^>]*>/gi, '\\pard\\rtlpar\\qj ')
-      .replace(/<p[^>]*>/gi, '\\pard\\rtlpar ')
+      // Handle tables (basic support)
+      .replace(/<table[^>]*>([\s\S]*?)<\/table>/gi, (match, tableContent) => {
+        let tableRtf = '';
+        // Match each row
+        const rowMatches = tableContent.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+        
+        rowMatches.forEach((rowMatch: string) => {
+          // Start row
+          tableRtf += '\\trowd\\trleft0';
+          
+          // Match cells in this row
+          const cellMatches = rowMatch.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/gi) || [];
+          let cellX = 0;
+          
+          // First pass: define cell structure
+          cellMatches.forEach((cellMatch: string) => {
+            const styleMatch = cellMatch.match(/style=["']([^"']*)["']/);
+            const style = styleMatch ? styleMatch[1] : '';
+            
+            // Parse width
+            let width = 1440; // Default 1 inch
+            const widthMatch = style.match(/width:\s*(\d+)px/);
+            if (widthMatch) {
+              const widthPx = parseInt(widthMatch[1]);
+              width = Math.round(widthPx * 1440 / 96);
+            }
+            
+            // Add borders
+            if (style.includes('border-top')) tableRtf += '\\clbrdrt\\brdrs\\brdrw15 ';
+            if (style.includes('border-bottom')) tableRtf += '\\clbrdrb\\brdrs\\brdrw15 ';
+            if (style.includes('border-left')) tableRtf += '\\clbrdrl\\brdrs\\brdrw15 ';
+            if (style.includes('border-right')) tableRtf += '\\clbrdrr\\brdrs\\brdrw15 ';
+            
+            cellX += width;
+            tableRtf += `\\cellx${cellX}`;
+          });
+          
+          // Second pass: add cell content
+          cellMatches.forEach((cellMatch: string) => {
+            // Extract content between tags
+            const contentMatch = cellMatch.match(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/i);
+            const content = contentMatch ? contentMatch[1] : '';
+            tableRtf += '\\pard\\intbl\\rtlpar ' + content + '\\cell ';
+          });
+          
+          tableRtf += '\\row\n';
+        });
+        
+        return tableRtf;
+      })
+      // Handle page breaks
+      .replace(/<div[^>]*style=["']([^"']*page-break-after:\s*always[^"']*)["'][^>]*><\/div>/gi, '\\page\n')
+      // Handle paragraphs with alignment and margins
+      .replace(/<p([^>]*)>/gi, (match, attrs) => {
+        const styleMatch = attrs.match(/style=["']([^"']*)["']/);
+        if (!styleMatch) return '\\pard\\rtlpar ';
+        
+        const style = styleMatch[1];
+        let rtf = '\\pard\\rtlpar';
+        
+        // Alignment
+        if (style.includes('text-align:center')) rtf += '\\qc ';
+        else if (style.includes('text-align:right')) rtf += '\\qr ';
+        else if (style.includes('text-align:left')) rtf += '\\ql ';
+        else if (style.includes('text-align:justify')) rtf += '\\qj ';
+        else rtf += ' ';
+        
+        // Margins (convert px to twips: 1px ≈ 15 twips, or pt: 1pt = 20 twips)
+        const marginLeftMatch = style.match(/margin-left:\s*(\d+)(px|pt)/);
+        if (marginLeftMatch) {
+          const marginValue = parseInt(marginLeftMatch[1]);
+          const unit = marginLeftMatch[2];
+          const marginTwips = unit === 'pt' ? marginValue * 20 : Math.round(marginValue * 15);
+          rtf += `\\li${marginTwips} `;
+        }
+        
+        const marginRightMatch = style.match(/margin-right:\s*(\d+)(px|pt)/);
+        if (marginRightMatch) {
+          const marginValue = parseInt(marginRightMatch[1]);
+          const unit = marginRightMatch[2];
+          const marginTwips = unit === 'pt' ? marginValue * 20 : Math.round(marginValue * 15);
+          rtf += `\\ri${marginTwips} `;
+        }
+        
+        return rtf;
+      })
       .replace(/<\/p>/gi, '\\par\n')
-      // Remove div tags - they're just containers
+      // Remove div tags - they're just containers (but page breaks handled above)
       .replace(/<\/?div[^>]*>/gi, '')
       .replace(/<strong[^>]*>|<b[^>]*>/gi, '\\b ')
       .replace(/<\/strong>|<\/b>/gi, '\\b0 ')
@@ -1864,6 +2057,10 @@ export function htmlToRtf(html: string): string {
 
     rtfBody = Array.from(rtfBody as string).map((char) => {
       const code = char.charCodeAt(0);
+      // Convert non-breaking space to RTF tilde
+      if (code === 160 || code === 0xA0) {
+        return '~';
+      }
       if (code > 127) {
         return `\\u${code}?`;
       }
