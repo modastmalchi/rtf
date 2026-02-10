@@ -1358,6 +1358,11 @@ export class RtfConverter {
           case 'cell':
             // End of table cell
             flushText();
+            // Close any open paragraph inside the cell
+            if (paragraphTagOpen) {
+              outputBuffer.push(`</${currentParagraphTag}>`);
+              paragraphTagOpen = false;
+            }
             if (tableCellOpen) {
               outputBuffer.push('</td>');
             }
