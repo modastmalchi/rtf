@@ -124,6 +124,7 @@ function escapeHtml(s: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+    .replace(/\u200C/g, '&zwnj;') // Zero-width non-joiner (نیم‌فاصله)
     .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;') // Tab to 8 non-breaking spaces
     .replace(/ /g, '&nbsp;');
 }
@@ -882,7 +883,7 @@ export class RtfConverter {
           // Tab
           case 'tab':
             if (!inPnTextGroup) {
-              appendText('\t');
+              appendText('        '); // 8 regular spaces
             }
             break;
           
@@ -1680,8 +1681,8 @@ export function htmlToRtf(html: string): string {
     // Text node
     if (node.nodeType === 3) {
       let text = node.textContent || '';
-      // Convert tab placeholder to RTF tab
-      text = text.replace(/\{\{TAB\}\}/g, '\\tab ');
+      // Convert tab placeholder to 8 spaces
+      text = text.replace(/\{\{TAB\}\}/g, '        ');
       text = text
         .replace(/\\/g, '\\\\')
         .replace(/\{/g, '\\{')
@@ -1698,9 +1699,9 @@ export function htmlToRtf(html: string): string {
 
       formatted += Array.from(text as string).map((char) => {
         const code = char.charCodeAt(0);
-        // Convert non-breaking space to RTF tilde
+        // Convert non-breaking space to regular space
         if (code === 160 || code === 0xA0) {
-          return '~';
+          return ' ';
         }
         if (code > 127) {
           return `\\u${code}?`;
@@ -1809,8 +1810,8 @@ export function htmlToRtf(html: string): string {
           // For ordered lists, we'll add numbers manually
           content += '\\pard\\rtlpar ';
         } else {
-          // For unordered lists, add bullet
-          content += '\\pard\\rtlpar \\bullet\\tab ';
+          // For unordered lists, add bullet and spaces
+          content += '\\pard\\rtlpar \\bullet        ';
         }
       } else if (tagName === 'br') {
         return '\\line ';
@@ -1922,20 +1923,21 @@ export function htmlToRtf(html: string): string {
       .replace(/\{\{TAB\}\}/g, '\t') // Convert {{TAB}} placeholder to tab character
       .replace(/(&nbsp;){8}/g, '\t') // 8 consecutive non-breaking spaces to tab
       .replace(/&nbsp;/g, '\u00A0') // Convert &nbsp; to non-breaking space character
+      .replace(/&zwnj;|&#8204;|&#x200C;/g, '\u200C') // Convert ZWNJ entities to character
       .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>');
     
     // Fallback for Node.js (simple regex-based parsing)
     rtfBody = html
-      .replace(/\t/g, '\\tab ') // Convert tab characters to RTF tab
+      .replace(/\t/g, '        ') // Convert tab characters to 8 spaces
       .replace(/<br\s*\/?>/gi, '\\line ')
       // Handle lists
       .replace(/<ul[^>]*>/gi, '')
       .replace(/<\/ul>/gi, '')
       .replace(/<ol[^>]*>/gi, '')
       .replace(/<\/ol>/gi, '')
-      .replace(/<li[^>]*>/gi, '\\pard\\rtlpar \\bullet\\tab ')
+      .replace(/<li[^>]*>/gi, '\\pard\\rtlpar \\bullet        ')
       .replace(/<\/li>/gi, '\\par\n')
       // Handle tables (basic support)
       .replace(/<table[^>]*>([\s\S]*?)<\/table>/gi, (match, tableContent) => {
@@ -2057,9 +2059,9 @@ export function htmlToRtf(html: string): string {
 
     rtfBody = Array.from(rtfBody as string).map((char) => {
       const code = char.charCodeAt(0);
-      // Convert non-breaking space to RTF tilde
+      // Convert non-breaking space to regular space
       if (code === 160 || code === 0xA0) {
-        return '~';
+        return ' ';
       }
       if (code > 127) {
         return `\\u${code}?`;
