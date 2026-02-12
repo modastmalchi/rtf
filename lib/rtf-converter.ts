@@ -115,7 +115,7 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 /**
- * Escape HTML special characters and convert spaces to entities
+ * Escape HTML special characters
  * @param s - Input string
  * @returns HTML-safe string with character entities
  */
@@ -127,9 +127,9 @@ function escapeHtml(s: string): string {
     .replace(/\u200C/g, '&zwnj;') // Zero-width non-joiner (نیم‌فاصله)
     .replace(/\u00AD/g, '&shy;') // Soft hyphen (optional hyphen)
     .replace(/\u2011/g, '&#8209;') // Non-breaking hyphen
-    .replace(/\u00A0/g, '&nbsp;') // Non-breaking space
-    .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;') // Tab to 8 non-breaking spaces
-    .replace(/ /g, '&nbsp;');
+    .replace(/\u00A0/g, '&nbsp;') // Non-breaking space (فقط این به nbsp تبدیل میشه)
+    .replace(/\t/g, '        '); // Tab to 8 regular spaces
+    // فاصله‌های معمولی رو همون‌طور نگه می‌داریم برای word-wrap درست
 }
 
 /**
