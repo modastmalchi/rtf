@@ -125,6 +125,9 @@ function escapeHtml(s: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/\u200C/g, '&zwnj;') // Zero-width non-joiner (نیم‌فاصله)
+    .replace(/\u00AD/g, '&shy;') // Soft hyphen (optional hyphen)
+    .replace(/\u2011/g, '&#8209;') // Non-breaking hyphen
+    .replace(/\u00A0/g, '&nbsp;') // Non-breaking space
     .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;') // Tab to 8 non-breaking spaces
     .replace(/ /g, '&nbsp;');
 }
@@ -589,6 +592,39 @@ export class RtfConverter {
             skipFallback--;
           } else {
             appendText(next);
+          }
+          i++;
+          continue;
+        }
+        
+        // Non-breaking space
+        if (next === '~') {
+          if (skipFallback > 0) {
+            skipFallback--;
+          } else if (!inPnTextGroup) {
+            appendText('\u00A0'); // Non-breaking space
+          }
+          i++;
+          continue;
+        }
+        
+        // Optional hyphen (soft hyphen)
+        if (next === '-') {
+          if (skipFallback > 0) {
+            skipFallback--;
+          } else if (!inPnTextGroup) {
+            appendText('\u00AD'); // Soft hyphen
+          }
+          i++;
+          continue;
+        }
+        
+        // Non-breaking hyphen
+        if (next === '_') {
+          if (skipFallback > 0) {
+            skipFallback--;
+          } else if (!inPnTextGroup) {
+            appendText('\u2011'); // Non-breaking hyphen
           }
           i++;
           continue;
@@ -1434,6 +1470,18 @@ export class RtfConverter {
         continue;
       }
       
+      // Handle special RTF characters in text
+      if (ch === '~') {
+        // Non-breaking space
+        if (skipFallback > 0) {
+          skipFallback--;
+        } else if (!inFontTable && !inStyleSheet && !inPnTextGroup) {
+          appendText('\u00A0'); // Non-breaking space
+        }
+        i++;
+        continue;
+      }
+      
       if (inFontTable && currentFontNumber !== null) {
         // Collect font name text
         fontNameBuffer += ch;
@@ -1704,9 +1752,17 @@ export function htmlToRtf(html: string): string {
 
       formatted += Array.from(text as string).map((char) => {
         const code = char.charCodeAt(0);
-        // Convert non-breaking space to regular space
+        // Non-breaking space → ~ in RTF
         if (code === 160 || code === 0xA0) {
-          return ' ';
+          return '~';
+        }
+        // Soft hyphen (optional hyphen) → \- in RTF
+        if (code === 0xAD) {
+          return '\\-';
+        }
+        // Non-breaking hyphen → \_ in RTF
+        if (code === 0x2011) {
+          return '\\_';
         }
         if (code > 127) {
           return `\\u${code}?`;
@@ -1910,10 +1966,13 @@ export function htmlToRtf(html: string): string {
   // Browser environment with DOMParser
   if (typeof DOMParser !== 'undefined' || (typeof window !== 'undefined' && typeof window.DOMParser !== 'undefined')) {
     try {
-      // Replace 8 consecutive &nbsp; with tab placeholder before parsing
-      const htmlWithTabs = html.replace(/(&nbsp;){8}/g, '{{TAB}}');
+      // Decode HTML entities and replace patterns before parsing
+      html = html
+        .replace(/(&nbsp;){8}/g, '{{TAB}}') // 8 consecutive &nbsp; to tab placeholder
+        .replace(/&shy;|&#173;|&#xAD;/gi, '\u00AD') // Soft hyphen
+        .replace(/&#8209;|&#x2011;/g, '\u2011'); // Non-breaking hyphen
       const parser = new DOMParser();
-      const doc = parser.parseFromString(htmlWithTabs, 'text/html');
+      const doc = parser.parseFromString(html, 'text/html');
       if (doc.body) {
         rtfBody = parseNode(doc.body);
       }
@@ -1928,6 +1987,8 @@ export function htmlToRtf(html: string): string {
       .replace(/\{\{TAB\}\}/g, '\t') // Convert {{TAB}} placeholder to tab character
       .replace(/(&nbsp;){8}/g, '\t') // 8 consecutive non-breaking spaces to tab
       .replace(/&nbsp;/g, '\u00A0') // Convert &nbsp; to non-breaking space character
+      .replace(/&shy;|&#173;|&#xAD;/gi, '\u00AD') // Convert soft hyphen entities to character
+      .replace(/&#8209;|&#x2011;/g, '\u2011') // Convert non-breaking hyphen entities to character
       .replace(/&zwnj;|&#8204;|&#x200C;/g, '\u200C') // Convert ZWNJ entities to character
       .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')
@@ -2064,9 +2125,21 @@ export function htmlToRtf(html: string): string {
 
     rtfBody = Array.from(rtfBody as string).map((char) => {
       const code = char.charCodeAt(0);
-      // Convert non-breaking space to regular space
+      // Non-breaking space → ~ in RTF
       if (code === 160 || code === 0xA0) {
-        return ' ';
+        return '~';
+      }
+      // Soft hyphen (optional hyphen) → \- in RTF
+      if (code === 0xAD) {
+        return '\\-';
+      }
+      // Non-breaking hyphen → \_ in RTF
+      if (code === 0x2011) {
+        return '\\_';
+      }
+      // Zero-width non-joiner → \u8204? in RTF
+      if (code === 0x200C) {
+        return '\\u8204?';
       }
       if (code > 127) {
         return `\\u${code}?`;
