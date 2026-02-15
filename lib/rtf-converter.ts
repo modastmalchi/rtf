@@ -57,6 +57,7 @@ interface RtfState {
   listLevel: number;
   align: string | null;
   outlineLevel: number | null; // For headings (0-8)
+  direction: 'ltr' | 'rtl' | null; // Text direction
   // New fields for advanced features
   inTable: boolean; // Are we inside a table?
   marginLeft: number; // Left margin (\li)
@@ -201,6 +202,7 @@ function emptyState(): RtfState {
     listLevel: 0,
     align: null,
     outlineLevel: null,
+    direction: null,
     inTable: false,
     marginLeft: 0,
     marginRight: 0,
@@ -496,14 +498,27 @@ export class RtfConverter {
       
       currentParagraphTag = tag;
       
-      // Build style string
+      // Build style string and attributes
       const styles: string[] = [];
+      const attrs: string[] = [];
+      
+      // Add direction attribute if specified
+      if (cur.direction) {
+        attrs.push(`dir="${cur.direction}"`);
+        styles.push(`direction:${cur.direction}`);
+        // Also add default text-align based on direction if not explicitly set
+        if (!cur.align) {
+          styles.push(`text-align:${cur.direction === 'ltr' ? 'left' : 'right'}`);
+        }
+      }
+      
       if (cur.align) styles.push(`text-align:${cur.align}`);
       if (cur.marginLeft > 0) styles.push(`margin-left:${cur.marginLeft}pt`);
       if (cur.marginRight > 0) styles.push(`margin-right:${cur.marginRight}pt`);
       
-      const parStyle = styles.length > 0 ? ` style="${styles.join(';')}"` : '';
-      pendingParagraphTag = `<${tag}${parStyle}>`;
+      const styleAttr = styles.length > 0 ? ` style="${styles.join(';')}"` : '';
+      const attrStr = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
+      pendingParagraphTag = `<${tag}${attrStr}${styleAttr}>`;
     };
 
     // Main parsing loop
@@ -874,6 +889,7 @@ export class RtfConverter {
             }
             cur.align = null;
             cur.outlineLevel = null; // Reset heading level
+            cur.direction = null; // Reset direction - will be set by rtlpar/ltrpar
             paragraphHasContent = false;
             currentParagraphTag = 'p';
             // Don't set pendingParagraphTag if we're in a list
@@ -1152,7 +1168,19 @@ export class RtfConverter {
           case 'tsrowd':
           case 'ilfomacatclnup':
           case 'ltrpar':
+            cur.direction = 'ltr';
+            // Update paragraph tag to reflect new direction
+            if (!paragraphHasContent) {
+              updatePendingParagraphTag();
+            }
+            break;
           case 'rtlpar':
+            cur.direction = 'rtl';
+            // Update paragraph tag to reflect new direction
+            if (!paragraphHasContent) {
+              updatePendingParagraphTag();
+            }
+            break;
           case 'ltrrow':
           case 'rtlrow':
           case 'ltrsect':
@@ -1524,10 +1552,20 @@ export class RtfConverter {
       outputBuffer.push('</ul>');
     }
 
-    // Build final HTML with text direction and text-align
-    const dirAttr = this.options.dir ? ` dir="${this.options.dir}"` : '';
-    const textAlign = this.options.dir === 'rtl' ? 'right' : 'left';
-    let html = `<div${dirAttr} style="text-align:${textAlign}">${outputBuffer.join('')}</div>`;
+    // Build final HTML
+    let html = outputBuffer.join('');
+    
+    // Check if content has mixed directions
+    const hasRtl = html.includes('dir="rtl"');
+    const hasLtr = html.includes('dir="ltr"');
+    const hasMixedDirections = hasRtl && hasLtr;
+    
+    // Only add wrapper div if there's no mixed directions
+    if (!hasMixedDirections && this.options.dir) {
+      const dirAttr = ` dir="${this.options.dir}"`;
+      const textAlign = this.options.dir === 'rtl' ? 'right' : 'left';
+      html = `<div${dirAttr} style="text-align:${textAlign}">${html}</div>`;
+    }
     
     // Cleanup empty tags
     html = cleanupEmptyTags(html);
@@ -1727,6 +1765,24 @@ export function htmlToRtf(html: string): string {
     colorIndex?: number;
   }
 
+  // Helper function to get direction from element
+  function getDirection(element: any): string {
+    const dirAttr = element.getAttribute('dir');
+    if (dirAttr) {
+      return dirAttr.toLowerCase() === 'ltr' ? '\\ltrpar' : '\\rtlpar';
+    }
+    
+    const style = element.getAttribute('style');
+    if (style) {
+      const dirMatch = style.match(/direction:\s*(\w+)/);
+      if (dirMatch) {
+        return dirMatch[1].toLowerCase() === 'ltr' ? '\\ltrpar' : '\\rtlpar';
+      }
+    }
+    
+    return '\\rtlpar'; // Default RTL
+  }
+
   function parseNode(node: any, state: HtmlState = {}): string {
     const newState = { ...state };
     let content = '';
@@ -1816,6 +1872,8 @@ export function htmlToRtf(html: string): string {
         const style = element.getAttribute('style');
         let align = '';
         let margins = '';
+        const direction = getDirection(element);
+        
         if (style) {
           const alignMatch = style.match(/text-align:\s*(\w+)/);
           if (alignMatch) {
@@ -1844,7 +1902,7 @@ export function htmlToRtf(html: string): string {
             margins += `\\ri${marginTwips} `;
           }
         }
-        content += '\\pard\\rtlpar' + align + margins;
+        content += '\\pard' + direction + align + margins;
       } else if (tagName === 'div') {
         // Check for page break
         const style = element.getAttribute('style');
@@ -1852,12 +1910,68 @@ export function htmlToRtf(html: string): string {
           return '\\page\n';
         }
         
-        // Div is just a container - don't add paragraph markers
-        // Just process children
+        // Check if div has direction - if yes, treat as block
+        const dirAttr = element.getAttribute('dir');
+        const hasDirection = dirAttr || (style && style.includes('direction:'));
+        
+        if (hasDirection) {
+          // Div with direction should be treated as a paragraph
+          const direction = getDirection(element);
+          let align = '';
+          
+          if (style) {
+            const alignMatch = style.match(/text-align:\s*(\w+)/);
+            if (alignMatch) {
+              const alignment = alignMatch[1];
+              if (alignment === 'right') align = '\\qr ';
+              else if (alignment === 'center') align = '\\qc ';
+              else if (alignment === 'justify') align = '\\qj ';
+              else if (alignment === 'left') align = '\\ql ';
+            }
+          }
+          
+          content += '\\pard' + direction + align;
+          for (const child of Array.from(node.childNodes)) {
+            content += parseNode(child, newState);
+          }
+          content += '\\par\n';
+          return content;
+        }
+        
+        // Div without direction is just a container - don't add paragraph markers
         for (const child of Array.from(node.childNodes)) {
           content += parseNode(child, newState);
         }
         return content;
+      } else if (tagName === 'h1' || tagName === 'h2' || tagName === 'h3' || 
+                 tagName === 'h4' || tagName === 'h5' || tagName === 'h6') {
+        // Headings - treat as bold paragraphs with larger font
+        const direction = getDirection(element);
+        const style = element.getAttribute('style');
+        let align = '';
+        
+        if (style) {
+          const alignMatch = style.match(/text-align:\s*(\w+)/);
+          if (alignMatch) {
+            const alignment = alignMatch[1];
+            if (alignment === 'right') align = '\\qr ';
+            else if (alignment === 'center') align = '\\qc ';
+            else if (alignment === 'justify') align = '\\qj ';
+            else if (alignment === 'left') align = '\\ql ';
+          }
+        }
+        
+        content += '\\pard' + direction + align;
+        newState.bold = true;
+        // Set larger font sizes for headings
+        const headingFontSizes: Record<string, number> = {
+          'h1': 20, 'h2': 18, 'h3': 16, 'h4': 14, 'h5': 12, 'h6': 11
+        };
+        newState.fontSize = headingFontSizes[tagName];
+      } else if (tagName === 'blockquote') {
+        // Blockquote - treat as indented paragraph
+        const direction = getDirection(element);
+        content += '\\pard' + direction + '\\li720 '; // 720 twips = 0.5 inch indent
       } else if (tagName === 'ul' || tagName === 'ol') {
         // Lists - just process children (li elements)
         for (const child of Array.from(node.childNodes)) {
@@ -1866,13 +1980,14 @@ export function htmlToRtf(html: string): string {
         return content;
       } else if (tagName === 'li') {
         // List item - add bullet/number and paragraph
+        const direction = getDirection(element);
         const isOrdered = node.parentNode && node.parentNode.tagName && node.parentNode.tagName.toLowerCase() === 'ol';
         if (isOrdered) {
           // For ordered lists, we'll add numbers manually
-          content += '\\pard\\rtlpar ';
+          content += '\\pard' + direction + ' ';
         } else {
           // For unordered lists, add bullet and spaces
-          content += '\\pard\\rtlpar \\bullet        ';
+          content += '\\pard' + direction + ' \\bullet        ';
         }
       } else if (tagName === 'br') {
         return '\\line ';
@@ -1888,7 +2003,10 @@ export function htmlToRtf(html: string): string {
         content += parseNode(child, newState);
       }
 
-      if (tagName === 'p' || tagName === 'li') {
+      if (tagName === 'p' || tagName === 'li' || 
+          tagName === 'h1' || tagName === 'h2' || tagName === 'h3' || 
+          tagName === 'h4' || tagName === 'h5' || tagName === 'h6' || 
+          tagName === 'blockquote') {
         content += '\\par\n';
       }
 
@@ -1948,7 +2066,8 @@ export function htmlToRtf(html: string): string {
 
       // Add cell contents
       cells.forEach((cell: any) => {
-        tableRtf += '\\pard\\intbl\\rtlpar ';
+        const direction = getDirection(cell);
+        tableRtf += '\\pard\\intbl' + direction + ' ';
         // Parse cell content
         for (const child of Array.from(cell.childNodes)) {
           tableRtf += parseNode(child);
@@ -2003,7 +2122,25 @@ export function htmlToRtf(html: string): string {
       .replace(/<\/ul>/gi, '')
       .replace(/<ol[^>]*>/gi, '')
       .replace(/<\/ol>/gi, '')
-      .replace(/<li[^>]*>/gi, '\\pard\\rtlpar \\bullet        ')
+      .replace(/<li[^>]*>/gi, (match) => {
+        // Extract dir attribute  
+        const dirMatch = match.match(/dir=["'](\w+)["']/);
+        let direction = '\\rtlpar'; // Default
+        if (dirMatch) {
+          direction = dirMatch[1].toLowerCase() === 'ltr' ? '\\ltrpar' : '\\rtlpar';
+        } else {
+          // Check style direction
+          const styleMatch = match.match(/style=["']([^"']*)["']/);
+          if (styleMatch) {
+            const style = styleMatch[1];
+            const styleDirMatch = style.match(/direction:\s*(\w+)/);
+            if (styleDirMatch) {
+              direction = styleDirMatch[1].toLowerCase() === 'ltr' ? '\\ltrpar' : '\\rtlpar';
+            }
+          }
+        }
+        return '\\pard' + direction + ' \\bullet        ';
+      })
       .replace(/<\/li>/gi, '\\par\n')
       // Handle tables (basic support)
       .replace(/<table[^>]*>([\s\S]*?)<\/table>/gi, (match, tableContent) => {
@@ -2057,43 +2194,112 @@ export function htmlToRtf(html: string): string {
       })
       // Handle page breaks
       .replace(/<div[^>]*style=["']([^"']*page-break-after:\s*always[^"']*)["'][^>]*><\/div>/gi, '\\page\n')
-      // Handle paragraphs with alignment and margins
+      // Handle paragraphs with alignment, margins, and direction
       .replace(/<p([^>]*)>/gi, (match, attrs) => {
-        const styleMatch = attrs.match(/style=["']([^"']*)["']/);
-        if (!styleMatch) return '\\pard\\rtlpar ';
-        
-        const style = styleMatch[1];
-        let rtf = '\\pard\\rtlpar';
-        
-        // Alignment
-        if (style.includes('text-align:center')) rtf += '\\qc ';
-        else if (style.includes('text-align:right')) rtf += '\\qr ';
-        else if (style.includes('text-align:left')) rtf += '\\ql ';
-        else if (style.includes('text-align:justify')) rtf += '\\qj ';
-        else rtf += ' ';
-        
-        // Margins (convert px to twips: 1px ≈ 15 twips, or pt: 1pt = 20 twips)
-        const marginLeftMatch = style.match(/margin-left:\s*(\d+)(px|pt)/);
-        if (marginLeftMatch) {
-          const marginValue = parseInt(marginLeftMatch[1]);
-          const unit = marginLeftMatch[2];
-          const marginTwips = unit === 'pt' ? marginValue * 20 : Math.round(marginValue * 15);
-          rtf += `\\li${marginTwips} `;
+        // Extract dir attribute
+        const dirMatch = attrs.match(/dir=["'](\w+)["']/);
+        let direction = '\\rtlpar'; // Default
+        if (dirMatch) {
+          direction = dirMatch[1].toLowerCase() === 'ltr' ? '\\ltrpar' : '\\rtlpar';
+        } else {
+          // Check style direction
+          const styleMatch = attrs.match(/style=["']([^"']*)["']/);
+          if (styleMatch) {
+            const style = styleMatch[1];
+            const styleDirMatch = style.match(/direction:\s*(\w+)/);
+            if (styleDirMatch) {
+              direction = styleDirMatch[1].toLowerCase() === 'ltr' ? '\\ltrpar' : '\\rtlpar';
+            }
+          }
         }
         
-        const marginRightMatch = style.match(/margin-right:\s*(\d+)(px|pt)/);
-        if (marginRightMatch) {
-          const marginValue = parseInt(marginRightMatch[1]);
-          const unit = marginRightMatch[2];
-          const marginTwips = unit === 'pt' ? marginValue * 20 : Math.round(marginValue * 15);
-          rtf += `\\ri${marginTwips} `;
+        const styleMatch = attrs.match(/style=["']([^"']*)["']/);
+        let rtf = '\\pard' + direction;
+        
+        if (styleMatch) {
+          const style = styleMatch[1];
+          
+          // Alignment
+          if (style.includes('text-align:center')) rtf += '\\qc ';
+          else if (style.includes('text-align:right')) rtf += '\\qr ';
+          else if (style.includes('text-align:left')) rtf += '\\ql ';
+          else if (style.includes('text-align:justify')) rtf += '\\qj ';
+          else rtf += ' ';
+          
+          // Margins (convert px to twips: 1px ≈ 15 twips, or pt: 1pt = 20 twips)
+          const marginLeftMatch = style.match(/margin-left:\s*(\d+)(px|pt)/);
+          if (marginLeftMatch) {
+            const marginValue = parseInt(marginLeftMatch[1]);
+            const unit = marginLeftMatch[2];
+            const marginTwips = unit === 'pt' ? marginValue * 20 : Math.round(marginValue * 15);
+            rtf += `\\li${marginTwips} `;
+          }
+          
+          const marginRightMatch = style.match(/margin-right:\s*(\d+)(px|pt)/);
+          if (marginRightMatch) {
+            const marginValue = parseInt(marginRightMatch[1]);
+            const unit = marginRightMatch[2];
+            const marginTwips = unit === 'pt' ? marginValue * 20 : Math.round(marginValue * 15);
+            rtf += `\\ri${marginTwips} `;
+          }
+        } else {
+          rtf += ' ';
         }
         
         return rtf;
       })
       .replace(/<\/p>/gi, '\\par\n')
-      // Remove div tags - they're just containers (but page breaks handled above)
-      .replace(/<\/?div[^>]*>/gi, '')
+      // Handle div with direction as block elements
+      .replace(/<div([^>]*)>/gi, (match, attrs) => {
+        // Check if div has direction
+        const dirMatch = attrs.match(/dir=["'](\w+)["']/);
+        const styleMatch = attrs.match(/style=["']([^"']*)["']/);
+        
+        let hasDirection = false;
+        let direction = '\\rtlpar';
+        
+        if (dirMatch) {
+          hasDirection = true;
+          direction = dirMatch[1].toLowerCase() === 'ltr' ? '\\ltrpar' : '\\rtlpar';
+        } else if (styleMatch && styleMatch[1].includes('direction:')) {
+          hasDirection = true;
+          const style = styleMatch[1];
+          const styleDirMatch = style.match(/direction:\s*(\w+)/);
+          if (styleDirMatch) {
+            direction = styleDirMatch[1].toLowerCase() === 'ltr' ? '\\ltrpar' : '\\rtlpar';
+          }
+        }
+        
+        if (hasDirection) {
+          let rtf = '\\pard' + direction;
+          
+          // Check for alignment
+          if (styleMatch) {
+            const style = styleMatch[1];
+            if (style.includes('text-align:center')) rtf += '\\qc ';
+            else if (style.includes('text-align:right')) rtf += '\\qr ';
+            else if (style.includes('text-align:left')) rtf += '\\ql ';
+            else if (style.includes('text-align:justify')) rtf += '\\qj ';
+            else rtf += ' ';
+          } else {
+            rtf += ' ';
+          }
+          
+          return rtf;
+        }
+        
+        // Div without direction - just a container, return empty
+        return '';
+      })
+      .replace(/<\/div>/gi, (match, offset, string) => {
+        // Check if the opening div had direction by looking back
+        // If it had direction, close with \par
+        const beforeDiv = string.substring(Math.max(0, offset - 200), offset);
+        if (beforeDiv.match(/<div[^>]*(dir=|direction:)/)) {
+          return '\\par\n';
+        }
+        return '';
+      })
       .replace(/<strong[^>]*>|<b[^>]*>/gi, '\\b ')
       .replace(/<\/strong>|<\/b>/gi, '\\b0 ')
       .replace(/<em[^>]*>|<i[^>]*>/gi, '\\i ')
